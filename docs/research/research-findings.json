@@ -1,0 +1,789 @@
+{
+  "findings": [
+    {
+      "topic": "Quantitative modelling of F1 tyre degradation and fuel-corrected lap pace for a 2022-2024 ground-effect-era race strategy simulator",
+      "key_findings": [
+        {
+          "claim": "Standard lap-time functional form: base lap time + fuel mass effect + tyre-age degradation, with degradation as linear / quadratic / cubic / logarithmic in tyre age. This is the canonical Heilmeier/TUM structure used across the field.",
+          "detail": "The TUM race-simulation (Heilmeier et al.) builds each lap as: t_lap = (t_q + t_gap_racepace)  [base race pace]  + t_car  [car/driver delta]  + m_fuel * t_lap_sens_mass  [fuel effect]  + t_tire(age)  [tyre degradation]  + situational terms (DRS, grid, start, traffic, pit). The tyre term has four selectable closed forms (verbatim from calc_tire_degradation.py): linear t_tire = k_0 + k_1_lin*age ; quadratic t_tire = k_0 + k_1_quad*age + k_2_quad*age^2 ; cubic t_tire = k_0 + k_1_cub*age + k_2_cub*age^2 + k_3_cub*age^3 ; logarithmic t_tire = k_0 + k_1_ln*ln(k_2_ln*age + 1). k_0 is the fresh-tyre time offset of the compound (the compound pace delta), and 'age' is tyre age in laps. The state-space paper (arXiv 2512.00640) writes the observation eq as y_t = alpha_t + gamma*fuel_t + eps_t, with alpha_t the latent tyre pace following alpha_{t+1} = alpha_t + nu (degradation drift), reset at pit stops.",
+          "numbers": "linear: t_tire=k_0+k_1_lin*age (s); quad adds k_2_quad*age^2 (s/lap^2); log: k_0+k_1_ln*ln(k_2_ln*age+1)",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/helper_funcs/src/calc_tire_degradation.py",
+          "confidence": "high"
+        },
+        {
+          "claim": "Fuel effect is modelled as linear in fuel mass: lap time penalty = fuel_mass_kg * mass_sensitivity, with the sensitivity ~0.03 s/kg (~0.3 s per 10 kg).",
+          "detail": "TUM uses t_fuel = m_fuel * t_lap_sens_mass (combustioncar.py: 'return Car.t_add_car(self) + self.m_fuel * t_lap_sens_mass'). t_lap_sens_mass is track-specific: 0.036 s/kg at Yas Marina 2017, 0.034 at Yas Marina 2019, and only 0.019 at Spielberg (short, low-fuel-sensitivity track). Starting fuel mass m_fuel is set to 110 kg (2019 races) / 105 kg (2017), and fuel burn b_fuel_perlap is 1.549-2.0 kg/lap (1.909 in 2017, 1.549 and 2.0 in two 2019 configs). Independent practitioner analysis (f1pace.com 2024) and a Prost-team example both use ~0.03 s/kg, ~100-110 kg start. Note F1 fuel-flow regs cap usable race fuel near 100-110 kg; max tank 110 kg.",
+          "numbers": "0.03 s/kg typical (~0.3 s/10kg); range 0.019-0.036 s/kg track-dependent; start fuel 105-110 kg; burn 1.55-2.0 kg/lap",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/racesim/src/combustioncar.py",
+          "confidence": "high"
+        },
+        {
+          "claim": "Compound pace offset (soft vs medium vs hard) is captured by k_0 (fresh-tyre offset) and differing degradation slopes. Real-world weekend deltas are roughly 0.5-1.0 s/lap per step in the ground-effect era, well below the FIA's original 1.2 s (M-H) and 2.2 s (S-H) targets.",
+          "detail": "In the state-space paper the per-compound fresh-tyre pace resets were centred at 69.5 s (hard), 69.0 s (medium), 68.5 s (soft) for the 2025 Austrian GP -> i.e. ~0.5 s/lap between adjacent compounds at that track. FIA's tender target was hard=baseline, medium ~1.2 s/lap faster, soft ~2.2 s/lap faster; but in practice (2023) Pirelli ran them much closer: medium ~0.5 s faster than hard, soft ~1.0 s faster than hard. FIA degradation target: ~2 s total performance drop reached by 22% of race distance (hard), 18% (medium), 10% (soft).",
+          "numbers": "k_0 / fresh offsets ~0.5 s/lap per compound step (Austria 2025); FIA target S-H 2.2s, M-H 1.2s; real 2023 ~1.0s (S-H), ~0.5s (M-H)",
+          "source_url": "https://arxiv.org/pdf/2512.00640",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Typical tyre degradation slopes are roughly 0.02-0.06 s/lap/lap for well-managed stints, rising steeply (0.1-0.2 s/lap/lap) near the cliff or for soft compounds. The TUM linear coefficients k_1_lin sit in this range.",
+          "detail": "From TUM Yas Marina 2019 tireset_pars (linear model), per-driver k_1_lin: e.g. HAM ~0.051-0.052 s/lap (compounds A4/A6) but 0.1855 s/lap on the softest A7; RIC ~0.026-0.040 s/lap, 0.0575 on A7; MAG 0.01-0.079 s/lap. The Bayesian state-space study estimated Hamilton's degradation at 0.054 s/lap (hard) and 0.060 s/lap (medium) at the 2025 Austrian GP (95% CIs ~+/-0.004-0.009), with compound differences NOT statistically distinct. Real 2024 Bahrain-test wear ranged 0.1-0.2 s/lap. A healthy hard stint loses ~0.05 s/lap; a struggling stint 0.15+ s/lap.",
+          "numbers": "k_1_lin (TUM) 0.026-0.079 s/lap normal, up to 0.186 s/lap softest; state-space nu=0.054 s/lap hard, 0.060 s/lap medium; real 0.05-0.20 s/lap",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/racesim/input/parameters/pars_YasMarina_2019.ini",
+          "confidence": "high"
+        },
+        {
+          "claim": "The 'cliff' (sharp nonlinear pace drop) and warm-up are NOT captured by a pure linear model; TUM recommends the logarithmic form for warm-up-then-degrade shape, and adds an explicit cold-tyre penalty plus reduced-degradation multipliers for SC/VSC laps.",
+          "detail": "TUM applies t_add_coldtires = 1.0 s on the out-lap (age_curstint==0) for cold/un-warmed tyres. Tyre degradation under safety-car / FCY laps is scaled by mult_tiredeg_sc=0.25 and mult_tiredeg_fcy=0.5 (degradation 'ages' the tyre only fractionally). Heilmeier notes a tyre initially underperforms below optimal core temperature, peaks, then degrades -> the logarithmic model fits this best when data is rich; linear is the fallback for sparse data. The state-space time-varying extension explicitly captured a warm-up phase: degradation rate nu starts NEGATIVE (lap times improving as tyre warms, e.g. laps 28-38 of a stint) before turning positive. The cliff is best represented by quadratic/cubic forms or a separate threshold; pure linear cannot.",
+          "numbers": "cold-tyre penalty 1.0 s on out-lap; SC deg multiplier 0.25, FCY 0.5; warm-up = negative early nu",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/racesim/src/tireset.py",
+          "confidence": "high"
+        },
+        {
+          "claim": "Graining and thermal degradation are physical mechanisms (not separate model terms in TUM) that show up as steeper/earlier degradation slopes; the 2022 ground-effect regs increased load sensitivity and overheating tendency.",
+          "detail": "Graining = localized rubber shearing from sliding (forms grains, reduces grip), worst when tyres are too cold / overworked; thermal degradation = carcass/compound overheating beyond optimal window, permanently hardening the rubber. The 2022 ground-effect cars are heavier with higher sustained loads and less low-speed downforce, aggravating graining; Pirelli's 18-inch construction was designed to reduce overheating. These manifest in a strategy model as compound-/track-specific increases in k_1 (slope) and onset of the cliff, or a temperature-window term; no standard closed-form constant exists, so they are typically fit per-event from FP long-run data.",
+          "numbers": "qualitative; modelled via elevated k_1 slopes / earlier cliff; no universal constant",
+          "source_url": "https://www.raceteq.com/articles/2024/08/the-science-behind-tyre-degradation-in-formula-1",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Heilmeier et al. (TUM, 2018 'A Race Simulation for Strategy Decisions in Circuit Motorsports') models the race lap-wise (discrete per lap), summing base pace, fuel-mass loss, tyre degradation, pit losses and overtaking; tyre deg uses linear or logarithmic age functions, fuel uses a linear mass-sensitivity term.",
+          "detail": "Architecture: lap-discretized; each driver's lap = base lap time minus/plus deltas. Pit-stop modelling separates standstill (t_pit_tirechange_min ~1.9 s + team add ~0.4-1.4 s) from drive-through pit loss (t_pitdrive_inlap + t_pitdrive_outlap; e.g. Yas Marina outlap ~18 s, Spielberg ~11.4 s). The follow-up Monte-Carlo paper (Heilmeier 2020) adds probabilistic effects (random lap-time sigma via random.gauss, SC/FCY phases, accidents). Heilmeier 2020a found the logarithmic tyre model fit better than linear when data quality is high. The newer Bayesian state-space approach (arXiv 2512.00640, 2025) reframes the same lap-time = latent_tyre_pace + gamma*fuel + noise with a skewed-t error to handle driver-mistake outliers, beating an ARIMA(2,1,2) baseline (RMSPE 1.08 vs 1.52).",
+          "numbers": "pit standstill ~1.9s + 0.4-1.4s; pit drive-through ~11-18s; fuel coeff gamma (state-space) ~ matches 0.03 s/kg; SC base lap multiplier 1.6, FCY 1.4",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "Lap-time master equation (TUM/Heilmeier): t_lap = t_q + t_gap_racepace + t_car + m_fuel*t_lap_sens_mass + t_tire(age) + DRS/grid/start/traffic terms",
+        "Fuel sensitivity t_lap_sens_mass = 0.03 s/kg typical (~0.3 s per 10 kg); track range 0.019 (Spielberg) to 0.036 (Yas Marina) s/kg",
+        "Starting fuel mass m_fuel = 110 kg (105 kg in 2017 config); F1 max tank 110 kg",
+        "Fuel burn b_fuel_perlap = 1.55-2.0 kg/lap (1.549, 1.909, 2.0 in TUM configs); independent analyses use ~1.6-1.8 kg/lap",
+        "Linear tyre deg: t_tire = k_0 + k_1_lin*age ; k_1_lin = 0.026-0.079 s/lap normal compounds, up to 0.186 s/lap softest (TUM Yas Marina 2019)",
+        "Quadratic: t_tire = k_0 + k_1_quad*age + k_2_quad*age^2 ; k_2_quad ~ 0.0001-0.0067 s/lap^2 (TUM)",
+        "Logarithmic (best per Heilmeier 2020a): t_tire = k_0 + k_1_ln*ln(k_2_ln*age + 1)",
+        "Cubic: t_tire = k_0 + k_1_cub*age + k_2_cub*age^2 + k_3_cub*age^3",
+        "k_0 = fresh-tyre compound pace offset; adjacent-compound delta ~0.5 s/lap (Austria 2025 state-space: hard 69.5s, med 69.0s, soft 68.5s)",
+        "FIA target compound deltas: medium 1.2 s/lap faster than hard, soft 2.2 s/lap faster; real 2023 closer (~0.5s M-H, ~1.0s S-H)",
+        "State-space degradation estimate (Hamilton, Austria 2025): nu = 0.054 s/lap (hard), 0.060 s/lap (medium), CIs +/-0.004-0.009; compound difference not statistically significant",
+        "Cold/un-warmed out-lap penalty t_add_coldtires = 1.0 s",
+        "Degradation multiplier under Safety Car = 0.25, under FCY/VSC = 0.5 (tyre 'ages' fractionally)",
+        "Pit standstill = t_pit_tirechange_min 1.9 s + team add 0.43-1.37 s; pit drive-through loss ~11.4 s (Spielberg) to ~18 s (Yas Marina)",
+        "SC base lap-time multiplier 1.6 (+60%), FCY/VSC multiplier 1.4 (+40%)",
+        "FIA deg target: ~2 s total drop by 22% race distance (hard), 18% (medium), 10% (soft)",
+        "Real 2024 Bahrain test wear: 0.1-0.2 s/lap; healthy hard stint ~0.05 s/lap, struggling stint 0.15+ s/lap"
+      ],
+      "modelling_recommendation": "Adopt the Heilmeier/TUM lap-wise additive structure as the backbone: lap_time(driver, lap) = t_base + t_car_driver + fuel_mass(lap)*k_fuel + t_tire(compound, tyre_age) + situational. (1) FUEL: track fuel mass linearly: fuel_mass(lap) = m_fuel_start - burn_per_lap*lap, t_fuel = fuel_mass*k_fuel with k_fuel = 0.03 s/kg default (tune 0.02-0.04 per track), m_fuel_start = 110 kg, burn_per_lap = total_fuel/n_laps (clamp >= ~1.6 kg/lap). Because start fuel is fixed and known, you can equivalently fuel-correct observed data by ADDING back k_fuel*burn_per_lap*(laps_remaining) to compare stints. (2) TYRE: use the quadratic form t_tire = k_0 + k_1*age + k_2*age^2 as the practical default - it captures gentle degradation plus a softening 'cliff' onset; reserve the logarithmic form k_0 + k_1_ln*ln(k_2_ln*age+1) if you can fit warm-up curvature with good data (Heilmeier found it superior). Pure linear (k_0 + k_1*age) is the safe fallback when data is sparse. Per-compound: set k_0 to the fresh-tyre offset (soft ~ -0.5 to -1.0 s vs medium, hard ~ +0.5 s vs medium), and increase k_1 going softer (e.g. hard ~0.03, medium ~0.045, soft ~0.06-0.09 s/lap; softest cliff compounds up to ~0.18). (3) WARM-UP/CLIFF: add a one-off cold-tyre out-lap penalty of ~1.0 s on the first lap of each stint; optionally let the first 1-3 laps have reduced/negative effective degradation to model warm-up (the state-space study found nu starts negative). Model the cliff either by the quadratic curvature or a hard threshold beyond which k_1 jumps - do NOT rely on a single linear slope through the whole stint. (4) GRAINING/THERMAL: don't add separate closed-form terms for a first version; instead absorb them into per-event, per-compound k_1/k_2 fits from FP2 long-runs, and flag overheating-prone tracks/compounds with steeper slopes and earlier cliff onset. (5) SC/VSC: scale degradation accrual by 0.25 (SC) / 0.5 (VSC) and inflate base lap time by 1.6x / 1.4x. (6) PIT LOSS: split into standstill (~1.9 s + ~0.5 s team) and pit-lane drive-through (track-specific 11-23 s). GOTCHAS: t_lap_sens_mass is strongly track-dependent (0.019 at short tracks vs 0.036 at long ones) - don't hardcode one value; the cliff is the main reason linear models mis-predict late-stint pace; compound degradation deltas are often statistically indistinct in clean data, so calibrate to long-run telemetry rather than assuming large fixed gaps; FastF1 lap data needs SC/VSC/in-lap/out-lap filtering before fitting. For probabilistic strategy use, add a Gaussian per-lap noise (sigma ~0.1-0.3 s) or the skewed-t error from the state-space paper to model driver-mistake outliers.",
+      "citations": [
+        "https://github.com/TUMFTM/race-simulation",
+        "https://github.com/TUMFTM/race-simulation/blob/master/helper_funcs/src/calc_tire_degradation.py",
+        "https://github.com/TUMFTM/race-simulation/blob/master/racesim/src/combustioncar.py",
+        "https://github.com/TUMFTM/race-simulation/blob/master/racesim/src/tireset.py",
+        "https://github.com/TUMFTM/race-simulation/blob/master/racesim/input/parameters/pars_YasMarina_2019.ini",
+        "https://ieeexplore.ieee.org/document/8570012/",
+        "https://www.researchgate.net/publication/329615679_A_Race_Simulation_for_Strategy_Decisions_in_Circuit_Motorsports",
+        "https://www.researchgate.net/publication/342319061_Application_of_Monte_Carlo_Methods_to_Consider_Probabilistic_Effects_in_a_Race_Simulation_for_Circuit_Motorsport",
+        "https://arxiv.org/abs/2512.00640",
+        "https://arxiv.org/pdf/2512.00640",
+        "https://arxiv.org/html/2306.16088",
+        "https://themotorsportmetrics.com/fuel-load-and-lap-time/",
+        "https://f1pace.com/p/2024-f1-season-tire-degradation-discussion-rounds-1-5/",
+        "https://www.autosport.com/f1/news/f1-tyres-what-are-the-compounds-and-what-do-they-mean/10344284/",
+        "https://www.racefans.net/2023/04/21/fias-very-little-tyre-degradation-target-is-still-too-much-for-michelin/",
+        "https://www.raceteq.com/articles/2024/08/the-science-behind-tyre-degradation-in-formula-1",
+        "https://www.total-motorsport.com/what-is-tyre-graining-blistering-degradation-f1/"
+      ]
+    },
+    {
+      "topic": "F1 pit-stop time loss and undercut/overcut/double-stack mechanics for a race strategy simulator",
+      "key_findings": [
+        {
+          "claim": "Total pit lane time loss (delta vs staying out) is typically ~20-25s, with outliers from ~18s up to ~28-30s depending on pit lane length and speed limit",
+          "detail": "This is the full in-lap-to-out-lap delta: time entering pit lane, decelerating to the speed limit, the stationary stop, accelerating, and rejoining, MINUS what the car would have done staying at racing speed. Driven mainly by pit lane length and speed limit (80 km/h standard, 60 km/h at Monaco/Singapore). Low-loss circuits like COTA/Austin sit under ~20s; high-loss circuits like Singapore and Imola reach ~27-30s because of long pit lanes and/or 60 km/h limits.",
+          "numbers": "Typical 20-25s; range ~18s (low) to ~28-30s (high). Monaco ~20s; Barcelona/Silverstone ~21-25s; Bahrain ~22-24s; Monza ~24s; Singapore/Imola ~27-30s",
+          "source_url": "https://racesundays.com/features/strategy/how-long-does-a-typical-f1-pit-stop-take-for-a-top-team",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Per-circuit pit-lane delta correlates with pit lane length and speed limit; Monaco is short, Silverstone/Imola/Interlagos are long",
+          "detail": "Monaco pit lane ~305m (one of shortest), Silverstone ~457m, Albert Park ~281m, Interlagos ~1140m / Imola among longest. Monaco still loses ~20s despite short length because of its 60 km/h limit. Use this to derive per-track values: longer pit lane and/or lower limit = larger delta. Singapore quoted at ~27-28s partly due to 60 km/h limit.",
+          "numbers": "Pit lane lengths: Albert Park ~281m, Monaco ~305m, Silverstone ~457m, Interlagos ~1140m. Speed limits: 80 km/h standard, 60 km/h Monaco/Singapore",
+          "source_url": "https://racesundays.com/features/strategy/how-long-does-a-typical-f1-pit-stop-take-for-a-top-team",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Stationary (four-tyre-change) time is ~2.0-3.5s for a normal stop; top teams routinely 2.0-2.5s; record 1.80s",
+          "detail": "A clean top-team stop is 2.0-2.5s stationary. A slightly fumbled or lower-midfield stop pushes toward 3.0-3.5s. The official world record is 1.80s (McLaren, 2023 Qatar GP); Red Bull set 1.82s at 2019 Brazil. A bad wheel-gun/cross-thread issue can add ~4s (e.g. Vettel left-front at 2020 Abu Dhabi cost ~4s extra). Note the stationary time is a SMALL part of the total pit delta \u2014 most of the ~20-25s is the slow pit-lane transit.",
+          "numbers": "Normal 2.0-3.5s; top team 2.0-2.5s; record 1.80s; world-record-pace 1.82s; botched stop adds ~4s",
+          "source_url": "https://www.formula1.com/en/latest/article/anatomy-of-a-pit-stop-how-do-f1-teams-service-their-cars-in-less-than-two.5p9LNdd8XJdvP4mRsXoGsB",
+          "confidence": "high"
+        },
+        {
+          "claim": "A typical undercut gives ~1s/lap of fresh-vs-old tyre advantage (up to ~1.5-2s on the out-lap), and pays off over ~2-3 laps",
+          "detail": "Fresh tyres are worth roughly 1s per lap versus worn tyres in steady state, and as much as 1.5-2s on the first flying out-lap once they are up to temperature (Pirelli tyres warm up within a corner or two). To complete an undercut you must build a gap larger than the time your rival will lose in their own stop; because the per-lap advantage is ~1s and the pit delta is ~20-25s, the undercut only works when you are already within ~1-2s of the rival on track, and it 'pays off' (you emerge ahead) over the ~2-3 laps spanning your stop and theirs. On high-deg tracks (Barcelona, Silverstone) the swing can be 3s+ over just two laps.",
+          "numbers": "Fresh-tyre advantage ~1s/lap (steady), ~1.5-2s on out-lap; pays off over ~2-3 laps; needs to be within ~1-2s of rival; up to 3s over 2 laps on high-deg tracks",
+          "source_url": "https://gpexplained.com/what-are-undercuts-and-overcuts-in-formula-1/",
+          "confidence": "medium"
+        },
+        {
+          "claim": "The overcut works in low-degradation, slow-warmup, or track-position-critical situations",
+          "detail": "Overcut = stay out longer than your rival, run in clear air after they pit, then pit later and emerge ahead. Favoured when: (a) tyre degradation is low so staying out costs little lap time; (b) the rival's fresh tyres warm up slowly so their out-lap is weak; (c) track position is extremely valuable / overtaking is hard (Monaco-type); (d) pitting would release the rival into backmarker traffic; (e) tyres are in a 'sweet-spot' plateau phase where old-tyre pace is stable. In modern F1 the overcut is more situational than the undercut because Pirelli tyres warm up fast, reducing the slow-out-lap window the overcut exploits.",
+          "numbers": "No single number; condition-based. Relies on old-tyre pace deficit being < fresh-tyre warmup deficit over the swing laps",
+          "source_url": "https://themotorsportmetrics.com/f1-undercut-vs-overcut/",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Double-stacking costs the second car ~2-4s of extra waiting (more if the first stop goes wrong)",
+          "detail": "Double-stack = pitting both team cars on consecutive same-lap stops. The pit crew can only service one car at a time, so the second car must wait roughly the duration of one stop (~2-3s) for the box to clear, effectively adding ~2-4s to the second car's stop. If the first car's stop is slow or has a problem, that delay compounds onto the second car. Teams want the second car ~4-6s behind the first on entry to avoid a queue; double-stacks are most common under Safety Car/VSC when the field is bunched and pit-delta cost is reduced.",
+          "numbers": "Second car waits ~2-4s extra (\u2248 one stop duration); recommended gap ~4-6s behind first car on pit entry",
+          "source_url": "https://flowracers.com/blog/undercut-overcut-double-stack-f1-pit-stops/",
+          "confidence": "medium"
+        }
+      ],
+      "concrete_numbers": [
+        "Total pit-lane time loss (delta vs staying out): typical 20-25s; full range ~18s to ~30s",
+        "Per-circuit pit loss estimates: Monaco ~20s, Barcelona ~21-23s, Silverstone ~21-25s, Bahrain ~22-24s, Monza ~24s, Singapore/Imola ~27-30s",
+        "Pit-lane speed limit: 80 km/h standard, 60 km/h at Monaco and Singapore",
+        "Stationary 4-tyre change: normal 2.0-3.5s; top-team clean 2.0-2.5s; world record 1.80s (McLaren, 2023 Qatar); 1.82s (Red Bull, 2019 Brazil)",
+        "Botched stop penalty: ~+4s (e.g. Vettel left-front, 2020 Abu Dhabi)",
+        "Fresh-vs-old tyre advantage: ~1.0s/lap steady-state; ~1.5-2.0s on the out-lap; up to ~3s over 2 laps on high-deg tracks",
+        "Undercut trigger window: must be within ~1-2s of rival; pays off over ~2-3 laps",
+        "Double-stack penalty for 2nd car: ~+2-4s wait (\u2248 one stop duration); want ~4-6s gap on entry",
+        "Pit lane lengths: Albert Park ~281m, Monaco ~305m, Silverstone ~457m, Interlagos ~1140m"
+      ],
+      "modelling_recommendation": "Model pit loss as a per-circuit constant PIT_LOSS[track] (seconds) representing the in-lap+out-lap delta vs staying out. Default ~22s; set Monaco ~20, Barcelona ~22, Silverstone ~23, Bahrain ~23, Monza ~24, Singapore/Imola ~28. If you want to derive it: PIT_LOSS \u2248 stationary_time + 2 * (pit_lane_length / pit_speed_limit_m_per_s - pit_lane_length / racing_speed_m_per_s)-ish transit penalty; simpler to just hardcode per-track. Separate the stationary component: STATIONARY = normal(mean=2.4s, with a small tail to 3.5s; occasional botch +4s) and fold it into PIT_LOSS so total = transit_delta + stationary. For tyre/undercut model: give each compound a pace curve where a fresh set is ~1.0s/lap faster than a same-compound set near the end of its stint, plus a one-off out-lap bonus of ~1.0-1.5s once warmed (warmup ~1 lap). Undercut emerges naturally: simulate driver A pitting lap N (loses PIT_LOSS but gains fresh-tyre delta each subsequent lap) and driver B pitting lap N+k; A passes B if accumulated fresh-tyre gain over k laps exceeds the on-track gap A conceded. Because gain is ~1s/lap, undercut succeeds within ~1-2s and resolves over 2-3 laps. Overcut: make old-tyre pace degradation gentle (low deg) and add a cold-tyre out-lap PENALTY to the pitting car (~1-1.5s) so staying out can win when deg is low or warmup penalty is high \u2014 gate it on track-position value (penalise on-track passing difficulty per circuit). Double-stack: when both cars pit same lap, add a queue penalty to the 2nd car = max(0, first_car_stationary_time) \u2248 +2.5s default, compounding if the first stop is slow. Make double-stacks attractive under SC/VSC by reducing effective PIT_LOSS (field bunched, pit-lane transit relatively cheaper) \u2014 a common simplification is SC pit loss \u2248 40-60% of green-flag pit loss. Gotchas: stationary time is only ~10% of total pit loss, so don't let pit-crew speed dominate strategy; the dominant lever is per-circuit transit delta and tyre deg rate. Treat all single numbers as ranges, not exact \u2014 confidence on per-circuit values is medium (mostly secondary/aggregator sources, not official FIA pit-delta tables).",
+      "citations": [
+        "https://racesundays.com/features/strategy/how-long-does-a-typical-f1-pit-stop-take-for-a-top-team",
+        "https://themotorsportmetrics.com/f1-undercut-vs-overcut/",
+        "https://gpexplained.com/what-are-undercuts-and-overcuts-in-formula-1/",
+        "https://flowracers.com/blog/undercut-overcut-double-stack-f1-pit-stops/",
+        "https://www.formula1.com/en/latest/article/anatomy-of-a-pit-stop-how-do-f1-teams-service-their-cars-in-less-than-two.5p9LNdd8XJdvP4mRsXoGsB",
+        "https://www.formula1.com/en/latest/article/watch-red-bull-break-pit-stop-world-record-at-silverstone.2H328l6j9YXGAEWHRHCmUc",
+        "https://racesundays.com/features/technology/balancing-risk-and-reward-pit-lane-speed-limits-vs-strategy",
+        "https://www.lightsoutblog.com/longest-and-shortest-f1-circuits/",
+        "https://f1briefing.com/undercut-vs-overcut-pit-timing-explained/"
+      ]
+    },
+    {
+      "topic": "Safety Car (SC) and Virtual Safety Car (VSC) statistics and their effect on F1 race strategy, for a Monte Carlo race simulator",
+      "key_findings": [
+        {
+          "claim": "The TUM/Heilmeier open-source F1 race simulator is the authoritative reference and gives the full stochastic SC/VSC model with fitted historical probabilities (seasons 2014-2019).",
+          "detail": "From pars_mcs.ini [ALL_SEASONS]: number of SC phases per race is drawn from p_sc_quant = [0.455, 0.413, 0.099, 0.033] for [0,1,2,3] SCs. This implies P(>=1 full SC in a race) = 0.545 (54.5%) and E[number of SC phases] = 0.71. SC start lap distribution p_sc_start = [0.364, 0.136, 0.136, 0.080, 0.193, 0.091] over [lap1, <20%, <40%, <60%, <80%, <100% race distance] (note strong lap-1 spike and a late-race bump). SC duration distribution p_sc_duration over 1-10 laps = [0, 0.182, 0.25, 0.227, 0.193, 0.057, 0.068, 0.023, 0, 0] giving E[SC duration] ~ 4.0 laps. VSC modelled as: after each driver retirement-by-failure, a VSC is triggered with p_vsc_aft_failure = 0.227; VSC duration over 1-4 laps p_vsc_duration = [0.479, 0.396, 0.021, 0.104], E ~ 1.75 laps.",
+          "numbers": "P(>=1 SC)=54.5%; E[#SC/race]=0.71; SC duration mean ~4 laps (mode 2-3); P(VSC | a failure)=0.227; VSC duration mean ~1.75 laps; SC quant dist [0.455,0.413,0.099,0.033]",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "Lap-time multipliers: SC laps run at ~160% of green lap time; VSC (FCY) laps at ~140%.",
+          "detail": "Track parameter files set mult_t_lap_sc = 1.6 and mult_t_lap_fcy = 1.4 for every circuit; the source code calc_racetimes_basic.py hard-codes the same fallback: 't_lap_sc = t_base * 1.6' and t_lap_fcy = 1.4. The f1metrics simulator independently uses ~140% of normal lap time at full SC pace and ~120% during the delta/forming phase. Practitioner articles quote cars slowing 'roughly 40%' under SC/VSC, consistent with the 1.4-1.6x band.",
+          "numbers": "SC lap = 1.6x green (+60%); VSC lap = 1.4x green (+40%). f1metrics: SC pace ~1.4x, delta phase ~1.2x.",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "Pitting under SC/VSC is a 'cheap stop': on-track time lost while pitting drops by roughly 40-80% vs green, with full SC cheaper than VSC. Absolute saving is typically ~7-12 seconds.",
+          "detail": "From the simulator's per-track pit-drive loss params (in-lap + out-lap driving loss, excluding the near-constant pit-lane stationary/speed-limit time): Red Bull Ring 2016 green=14.1s, VSC=4.0s (save 10.1s/71%), SC=2.5s (save 11.6s/82%); Silverstone 2017 green=17.0s, VSC=7.2s (save 9.8s/58%), SC=5.4s (save 11.6s/68%); Baku 2018 green=17.1s, VSC=10.2s (save 6.9s/40%), SC=7.2s (save 9.9s/58%). Practitioner consensus: a normal stop costs ~20-25s (range 18-28s); under VSC you save ~30-40% of that loss, under full SC ~40-60% (e.g. a 22s stop drops to ~12-14s). Mercedes reported saving ~10-11s by pitting under SC. Monaco-specific analysis cites a ~7s saving as the decisive strategic number.",
+          "numbers": "Green pit loss ~20-25s (range 18-28s). VSC saves ~30-40% of loss; SC saves ~40-60% (commonly stated ~50%). Absolute saving ~7-12s. Effective SC stop ~10-14s.",
+          "source_url": "https://racesundays.com/features/strategy/why-pitting-under-a-safety-car-beats-normal-stops-in-f1",
+          "confidence": "high"
+        },
+        {
+          "claim": "Recent full-season counts give ~1.2-1.8 neutralisations per race and ~75-90% of races with at least one SC or VSC.",
+          "detail": "2022: 39 caution periods over 22 races = 25 SC + 18 VSC; 20 of 22 races (91%) had at least one SC or VSC; only Spain and Abu Dhabi were clean (1.77 cautions/race). 2024: 17 SC + 10 VSC = 27 neutralisations over 24 races; 12 races had >=1 SC (50%), 9 had >=1 VSC; note a record 9-race run with no full SC. The 54.5% P(>=1 SC) from the 2014-2019 fit sits between the 2024 (50%) and higher-incident seasons; combined SC-or-VSC per-race probability is materially higher (~75-90%).",
+          "numbers": "2022: 1.77 cautions/race, 91% of races with SC or VSC, 25 SC / 18 VSC. 2024: 1.13/race, 27 total (17 SC, 10 VSC), 50% of races with a full SC.",
+          "source_url": "https://www.lightsoutblog.com/2022/11/21/f1-2022-in-numbers-the-2022-formula-1-season-in-statistics/",
+          "confidence": "high"
+        },
+        {
+          "claim": "Circuit-specific SC probability varies enormously: Singapore ~near-100%, Baku ~86%, Monaco ~21-29%, Monza ~27%, Paul Ricard as low as ~10%.",
+          "detail": "Singapore (Marina Bay) had at least one SC in EVERY race from 2008 until the streak broke in 2024 (~100% historically, 24 SC deployments). Baku/Azerbaijan quoted at ~86% SC chance (only the 2016 inaugural race had no SC or VSC; one summary gives 57% full-SC over 7 races plus frequent VSCs). Monaco: 15 of ~70 races had a SC (~21%); since 2018, VSC in 43% of Monaco GPs, full SC in 29%, red flag in 29% (clean races are the exception); 2021/2023/2024 had none. Monza: ~27% SC probability (only ~9 Italian GPs since 2000 had a SC) - a notably LOW track. Canada/Gilles Villeneuve is the highest-frequency permanent-ish circuit (~37+ SC deployments). Street/tight circuits (Singapore, Baku, Monaco, Jeddah) skew high; fast open circuits with big run-off (Monza, Paul Ricard, Spain) skew low.",
+          "numbers": "Singapore ~100% (pre-2024); Baku ~86%; Monaco ~21% all-time / since-2018 SC 29%, VSC 43%; Monza ~27%; Paul Ricard ~10%",
+          "source_url": "https://www.lightsoutblog.com/f1-track-stats-monaco-grand-prix/",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Standard practice for modelling SC arrival is a per-lap hazard / Poisson-style process, often coupled to retirements; teams run 10,000+ Monte Carlo race draws.",
+          "detail": "Two common approaches: (1) Per-lap hazard: each lap has a probability p that a SC is triggered (illustratively ~10%/lap on a SC-prone track), equivalent to a discrete-time Poisson/Bernoulli arrival process; expected count and timing follow from the per-lap rate. (2) Retirement-coupled (Heilmeier): first draw the NUMBER of SC phases for the race from a categorical distribution (p_sc_quant), then place each phase's start lap by sampling from an empirical start-distribution, then sample duration; accidents trigger SC and failures trigger VSC with probability 0.227. Both feed a Monte Carlo loop of thousands of races to build outcome distributions per strategy. f1metrics couples SC issuance to a driver retirement event, with per-track historical SC likelihood. For a simple simulator, a constant per-lap hazard lambda calibrated so that 1-exp(-lambda*N_laps) equals the track's historical P(>=1 SC) is a clean, defensible choice.",
+          "numbers": "Per-lap SC hazard illustratively ~0.10 on SC-prone tracks; calibrate lambda via P(>=1 SC)=1-exp(-lambda*N_laps); 10,000+ MC race draws typical; Heilmeier number-of-SC categorical [0.455,0.413,0.099,0.033]",
+          "source_url": "https://f1metrics.wordpress.com/2014/10/03/building-a-race-simulator/",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "P(>=1 full SC in a race) = 0.545 (Heilmeier 2014-2019 fit); E[number of SC phases/race] = 0.71",
+        "Number-of-SC-phases distribution per race: P(0)=0.455, P(1)=0.413, P(2)=0.099, P(3)=0.033",
+        "SC phase duration: mean ~4.0 laps, mode 2-3 laps; distribution over 1-10 laps = [0,0.182,0.25,0.227,0.193,0.057,0.068,0.023,0,0]",
+        "VSC phase duration: mean ~1.75 laps; over 1-4 laps = [0.479,0.396,0.021,0.104]",
+        "P(VSC triggered | a driver retires from a failure) = 0.227 (then summed over expected retirements per race)",
+        "SC start-lap weighting [lap1, <20%, <40%, <60%, <80%, <100%] = [0.364,0.136,0.136,0.080,0.193,0.091]",
+        "Lap-time multiplier under full SC = 1.6x green (+60%); under VSC/FCY = 1.4x green (+40%)",
+        "f1metrics alternative: SC pace ~1.4x normal lap; forming/delta phase ~1.2x; fixed 6-lap SC period",
+        "Normal (green) pit-stop time loss = ~20-25s (full range 18-28s)",
+        "Pit loss saved under VSC = ~30-40% of normal loss; under full SC = ~40-60% (~50% common rule of thumb)",
+        "Absolute pit-stop saving ~7-12s under SC; effective SC stop ~10-14s (e.g. 22s -> 12-14s)",
+        "Per-track on-track pit-drive saving (sim): Red Bull Ring SC 82%/VSC 71%; Silverstone SC 68%/VSC 58%; Baku SC 58%/VSC 40%",
+        "Season cautions: 2022 = 1.77/race (25 SC + 18 VSC), 91% of races with SC-or-VSC; 2024 = 1.13/race (17 SC + 10 VSC), 50% with full SC",
+        "Circuit P(SC): Singapore ~100% (pre-2024), Baku ~86%, Monza ~27%, Monaco ~21-29%, Paul Ricard ~10%",
+        "Monaco since 2018: VSC 43%, full SC 29%, red flag 29% of races",
+        "Fuel/tyre-deg multipliers under neutralisation (sim): consumption x0.25 (SC) / x0.5 (VSC); tyre deg x0.25 (SC) / x0.5 (VSC)",
+        "Illustrative per-lap SC hazard on SC-prone tracks ~0.10; calibrate lambda so 1-exp(-lambda*N_laps)=historical P(>=1 SC)"
+      ],
+      "modelling_recommendation": "Model SC and VSC as separate stochastic processes feeding a per-lap discrete simulation, calibrated per circuit. RECOMMENDED (Heilmeier/TUM approach, best validated): (1) Draw the number of SC phases for the race from a categorical distribution; default [P0,P1,P2,P3]=[0.455,0.413,0.099,0.033], but scale to the circuit's historical P(>=1 SC) (Singapore ~1.0, Baku ~0.86, Monaco ~0.25, Monza ~0.27, Paul Ricard ~0.10). (2) For each SC, sample a start lap using the empirical weights [lap1=0.364, then 0.136/0.136/0.080/0.193/0.091 spread across the <20/40/60/80/100% race-distance bins] - note the lap-1 spike and a late-race bump. (3) Sample SC duration from the 1-10 lap pmf [0,0.182,0.25,0.227,0.193,0.057,0.068,0.023,0,0] (mean ~4 laps). (4) VSC: per modelled driver retirement-from-failure, trigger a VSC with prob 0.227; sample VSC duration from 1-4 laps [0.479,0.396,0.021,0.104] (mean ~1.75). SIMPLER ALTERNATIVE: a constant per-lap Bernoulli/Poisson hazard lambda chosen so 1-exp(-lambda*N_laps) equals the circuit's historical P(>=1 SC); each arrival becomes an SC (prob ~0.55) or VSC (~0.45). LAP-TIME EFFECT: multiply the green lap time by 1.6 during SC laps and 1.4 during VSC laps (optionally model a slower 1-lap 'forming/bunch-up' transition at ~1.2x like f1metrics). During neutralisation, scale tyre degradation and fuel use down (x0.25 under SC, x0.5 under VSC). PIT 'CHEAP STOP': split pit loss into a fixed pit-lane component (stationary + speed-limited travel, roughly constant) and a variable on-track time-loss-to-the-field component. Under SC reduce the effective loss by ~50% (range 40-60%), under VSC by ~30-40%; in absolute terms a ~20-25s green loss becomes ~10-14s. Implement this as loss_eff = green_loss * (1 - saving_frac) with saving_frac ~ 0.50 (SC) / 0.35 (VSC), or use per-track in/out-lap deltas if you have them. GOTCHAS: SCs cluster on lap 1 and late in the race (not uniform) - a flat hazard underweights both; full SC bunches the field (closes gaps, big positional swing) whereas VSC preserves gaps (smaller positional gain) so the value of a stop differs even at equal time saved; VSC can end with only ~10-15s warning, so a perfect-information sim overvalues VSC stops; the simulator's per-track pit-drive numbers exclude the fixed pit-lane time, so don't double-count. Wrap all of this in a 10,000+ iteration Monte Carlo loop to get an outcome distribution per strategy.",
+      "citations": [
+        "https://github.com/TUMFTM/race-simulation",
+        "https://www.mdpi.com/2076-3417/10/12/4229",
+        "https://f1metrics.wordpress.com/2014/10/03/building-a-race-simulator/",
+        "https://racesundays.com/features/strategy/why-pitting-under-a-safety-car-beats-normal-stops-in-f1",
+        "https://www.axiorablogs.com/blog/probability-and-the-safety-car-the-statistics-of-f1-strategy",
+        "https://www.lightsoutblog.com/2022/11/21/f1-2022-in-numbers-the-2022-formula-1-season-in-statistics/",
+        "https://www.lightsoutblog.com/every-safety-car-f1-2024/",
+        "https://www.lightsoutblog.com/f1-track-stats-monaco-grand-prix/",
+        "https://www.lightsoutblog.com/azerbaijan-grand-prix-f1-track-stats/",
+        "https://www.lightsoutblog.com/every-safety-car-deployment-at-the-singapore-grand-prix/",
+        "https://www.sigmachinelearning.com/post/monte-carlo-game-theory-machine-learning-the-race-strategy-triangle-for-formula-1",
+        "https://www.mercedesamgf1.com/news/insight-understanding-f1-safety-cars"
+      ]
+    },
+    {
+      "topic": "How F1 race-strategy simulators model overtaking, dirty air, DRS, and track position (with concrete parameters from the Heilmeier/TUM, f1metrics, and Sulsters models)",
+      "key_findings": [
+        {
+          "claim": "Overtaking is modelled as a per-lap pace-delta threshold: the trailing car only passes if it is faster than the car ahead by a circuit-specific 'overtaking gap' (t_gap_overtake). In the canonical TUM/Heilmeier sim this gap ranges ~1.26 s (easiest) to 3.75 s (hardest) per lap.",
+          "detail": "TUMFTM/race-simulation computes each driver's cumulative race time at lap end; for an adjacent pair the trailing car overtakes only if its time advantage >= t_gap_overtake_tot. Code (racesim/src/race.py L942): `if overtake_allowed and racetimes_tmp[pos_cur_b] - racetimes_tmp[pos_back_b] >= t_gap_overtake_tot`. t_gap_overtake_tot = track.t_gap_overtake + velocity-delta modifier + team-order modifier. Verified by cloning the repo and reading the .ini parameter files plus race.py.",
+          "numbers": "t_gap_overtake per circuit (2019 .ini files): Suzuka 1.26 s, Silverstone 1.35 s, Sakhir/Bahrain 1.38 s, Shanghai 1.50 s, Hockenheim 1.56 s, Baku 1.62 s, Le Castellet 1.635 s, Monza 1.755 s, Austin 1.83 s, Spa 1.83 s, Spielberg 2.01 s, Sao Paulo 2.025 s, Mexico City 2.055 s, Yas Marina 2.07 s, Sochi 2.13 s, Catalunya 2.31 s, Budapest 2.415 s, Melbourne 2.70 s, Monte Carlo (Monaco) 3.75 s, Montreal 3.75 s, Singapore 3.75 s",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "The per-circuit overtaking gap IS the 'overtaking difficulty' ranking. Monaco (Monte Carlo), Singapore and Montreal are hardest (3.75 s required advantage = effectively unpassable on pace); Suzuka, Silverstone and Bahrain (Sakhir) are easiest (~1.26-1.38 s).",
+          "detail": "This directly answers the per-circuit ranking ask. The values were tuned by Heilmeier et al. to reproduce historical overtaking counts. Monaco's 3.75 s means a car must be ~3.75 s/lap faster to clear the car ahead, which essentially never happens on equal cars - matching real-world Monaco being a procession. The threshold is reduced by t_gap_overtake_vel (~-0.03 s per km/h of top-speed delta), so a big straight-line speed advantage lowers the required gap.",
+          "numbers": "Hardest: Monaco 3.75 / Singapore 3.75 / Montreal 3.75 s. Mid: Monza 1.755 s. Easiest: Suzuka 1.26 / Silverstone 1.35 / Bahrain 1.38 s. Velocity modifier t_gap_overtake_vel approx -0.031 to -0.061 s per km/h top-speed difference (negative = lowers threshold).",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "DRS is modelled as a fixed negative lap-time bonus applied when the trailing car is within a 1.0 s window of the car ahead, enabled only from a start-of-race lap onward and disabled for a few laps after a safety car.",
+          "detail": "TUM model: use_drs=true, drs_window=1.0 s, drs_allow_lap=3, drs_sc_delay=2 laps. The bonus t_drseffect (negative) is split in half across the lap (race.py L641-655: `self.laptimes[...] += self.track.t_drseffect / 2.0` applied twice). f1metrics uses a net DRS gain of -0.4 s/lap, granted from lap 3 to a car within 1.0 s at lap start. Sulsters thesis uses tDRS = -0.5 s with a 1.0 s DRS threshold, DRS blocked for the first two laps and during safety car.",
+          "numbers": "TUM t_drseffect per circuit ranged approx -0.13 s (Montreal) to -0.92 s (Singapore); typical ~-0.46 to -0.55 s/lap (e.g. Monza -0.462, Bahrain -0.532, Catalunya -0.756). f1metrics: -0.4 s/lap net. Sulsters: -0.5 s/lap. DRS window = 1.0 s in all three.",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "Overall overtaking threshold rule of thumb used by teams and the f1metrics sim: you need to be roughly 1 s/lap faster even WITH DRS, i.e. ~0.8 s/lap faster in clean air without DRS, to actually pass at most circuits.",
+          "detail": "f1metrics: author 'guesstimated a threshold of 1.2 s', meaning the driver must be a net 0.8 s/lap quicker in clean air without DRS (because the 0.4 s DRS gain plus reaching the threshold closes the gap). Threshold adjusted by 0.2 s for every 10 km/h of straight-line-speed difference. Aston Martin's strategist (Tom McCullough) independently states the team 'overtaking threshold' is about a second a lap faster even with DRS at most circuits.",
+          "numbers": "Overtaking threshold ~1.2 s/lap (f1metrics), equivalent to ~0.8 s/lap clean-air advantage without DRS; +/-0.2 s per 10 km/h straight-line speed delta; team rule of thumb ~1 s/lap even with DRS.",
+          "source_url": "https://f1metrics.wordpress.com/2014/10/03/building-a-race-simulator/",
+          "confidence": "high"
+        },
+        {
+          "claim": "Time lost stuck behind a slower car is modelled by a minimum-gap constraint plus per-lap penalties, not a single fixed number: the follower is clamped to a minimum gap (0.2-0.5 s) behind the leader, and both cars take a 'duel' time loss each lap they fight (~0.3 s) and an extra loss when a pass finally happens (~0.3-0.5 s for the overtaken car).",
+          "detail": "TUM: min_t_dist = 0.5 s (0.8 s under safety car); a follower cannot be placed closer than this, so its effective lap time is inflated to sit 0.5 s behind (race.py L962-968). t_duel = 0.3 s/lap applied to both cars when within min_t_dist and a pass is allowed. t_overtake_loser = 0.3 s added to the lap time of the car that gets passed. f1metrics: minimum gap 0.2 s, and a 0.4 s loss for the overtaken car. Net effect: a car genuinely faster than the one ahead but below the overtaking threshold simply circulates ~0.5 s behind, bleeding all its surplus pace = the 'track-position is king' result. This is how the sims value track position: a faster car can be trapped indefinitely, losing its entire pace advantage each lap, which is why undercut/overcut pit strategy is used to gain position instead of on-track passing.",
+          "numbers": "TUM: min_t_dist 0.5 s (0.8 s under SC), t_duel 0.3 s/lap, t_overtake_loser 0.3 s. f1metrics: min gap 0.2 s, overtaken-car loss 0.4 s. Sulsters: min gap (delta_min) 0.2 s, overtaking penalty 0.5 s.",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "Dirty-air / following pace penalty is modelled two ways: (a) increased tyre wear when running close (f1metrics: tyre-wear rate x1.1 on any lap spent within ~1 s), and (b) a direct lap-time penalty that is a linear function of gap, active only for gaps roughly 0.2-1.5 s, downforce-dominated (a loss) at high-downforce tracks and drag-dominated (a gain/slipstream) at low-downforce tracks.",
+          "detail": "f1metrics applies a 1.1x tyre-wear multiplier whenever a car is close enough to get the DRS/dirty-air flag, so the cost of following is paid in accelerated degradation rather than a fixed lap-time hit. The 2026 multi-agent TUM-lineage paper (arXiv 2602.23056) models the aerodynamic interaction as Delta_T_int = a*t_gap + b for t_gap in [0.2 s, 1.5 s], else 0, with a < 0 (penalty grows as gap shrinks). At Bahrain (downforce-limited, many corners) following is a net lap-time LOSS; at Monza (drag-limited) the slipstream is a net GAIN. Public sources give the underlying aero loss in downforce-% rather than a single canonical s/lap figure, so the exact seconds/lap is model-dependent.",
+          "numbers": "f1metrics tyre-wear penalty: x1.1 when within DRS/dirty-air range. Multi-agent model: linear penalty over gap window 0.2-1.5 s, sign flips by circuit (Bahrain loss, Monza gain). Effective held-up cost in TUM sim ~0.5 s/lap via min_t_dist clamp.",
+          "source_url": "https://arxiv.org/abs/2602.23056",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Ground-effect (2022+) era dirty-air specifics: the 2022 rules cut following downforce loss dramatically vs 2021, but it has steadily regressed back toward pre-2022 levels by 2024-2025 as teams developed outwash.",
+          "detail": "Pre-2022 (2021 cars): ~35% downforce lost at ~20 m (\u22483 car lengths), ~47% lost at ~10 m (\u22481 car length). 2022 launch spec: only ~4-5% lost at 20 m, ~18-20% lost at 10 m. By 2023-2025 it had worsened to ~35% loss when close (one car length) and retention figures fell - The Race CFD data: at 10 m downforce retained dropped from 85% (2022) to 65% (2025); at 20 m from 95% (2022) to 80% (2025). FIA target for 2026 cars ~18% loss at 0.5 s behind. Translating % downforce loss to s/lap is circuit-specific and not published as one number; sims encode it via the tyre-wear factor or the gap-dependent linear penalty above.",
+          "numbers": "2021: ~35% DF loss at 20 m, ~47% at 10 m. 2022 launch: ~4-5% at 20 m, ~18-20% at 10 m. 2023-25: ~20% (2022) rising to >30-35% close; The Race: 10 m retention 85%->65%, 20 m retention 95%->80% (2022->2025). 2026 FIA target ~18% loss at 0.5 s.",
+          "source_url": "https://www.the-race.com/formula-1/exclusive-new-data-f1-aero-losses-ruining-close-racing/",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Overtaking probability is an explicit, per-circuit calibrated parameter in some sims (Sulsters/Bekker-Lotz lineage): a pass that clears the threshold still only succeeds with probability p_overtaking, tuned so simulated overtake counts match reality.",
+          "detail": "Sulsters thesis (which builds directly on f1metrics parameters) makes the pass probabilistic: overtaking threshold alpha_overtaking and overtaking probability p_overtaking are tuned per race by matching simulated vs actual overtake counts over 1000 sims. Harder tracks get a larger (more negative) threshold and lower probability; easier tracks the reverse. The TUM/Heilmeier model is instead deterministic on pace (no p_overtaking) but adds Monte-Carlo randomness elsewhere. Context: DRS introduction in 2011 raised average overtakes per race from 28.79 (2010) to 60.63 (2011).",
+          "numbers": "Sulsters calibrated values: Japan threshold -1.9 s, p=0.18; USA -1.8 s, p=0.40; Mexico -1.9 s, p=0.10; Abu Dhabi -1.5 s, p=0.30. Fixed: tDRS -0.5 s, DRS threshold 1.0 s, overtaking penalty 0.5 s, min gap 0.2 s. Calibration target overtakes: Mexico ~25 (low), USA ~57 (high). DRS effect on overtakes/race: 28.79 (2010) -> 60.63 (2011).",
+          "source_url": "https://vu-business-analytics.github.io/internship-office/papers/paper-sulsters.pdf",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "Overtaking pace-delta threshold (TUM t_gap_overtake, 2019): Suzuka 1.26 s, Silverstone 1.35 s, Bahrain/Sakhir 1.38 s, Monza 1.755 s, Monaco 3.75 s, Singapore 3.75 s, Montreal 3.75 s (s/lap advantage required to pass)",
+        "Overtaking threshold rule of thumb (f1metrics / teams): ~1.2 s/lap with DRS, i.e. ~0.8 s/lap clean-air advantage; team heuristic ~1 s/lap even with DRS",
+        "Straight-line-speed adjustment to threshold: +/-0.2 s per 10 km/h (f1metrics); TUM t_gap_overtake_vel \u2248 -0.03 to -0.06 s per km/h",
+        "DRS window: 1.0 s (TUM, f1metrics, Sulsters - all)",
+        "DRS lap-time bonus: f1metrics -0.4 s/lap; Sulsters -0.5 s/lap; TUM t_drseffect \u2248 -0.46 to -0.55 s/lap typical (range -0.13 s Montreal to -0.92 s Singapore)",
+        "DRS enable lap: lap 3 (TUM drs_allow_lap=3; f1metrics 'lap 3 onwards'; Sulsters disabled first 2 laps); disabled drs_sc_delay=2 laps after safety car",
+        "Minimum following gap (clamp): TUM min_t_dist 0.5 s (0.8 s under SC); f1metrics 0.2 s; Sulsters delta_min 0.2 s",
+        "Duel / fighting penalty per lap: TUM t_duel 0.3 s applied to both cars",
+        "Penalty to overtaken car: TUM t_overtake_loser 0.3 s; f1metrics 0.4 s; Sulsters 0.5 s",
+        "Dirty-air tyre-wear multiplier (f1metrics): x1.1 per lap when within DRS/dirty-air range",
+        "Dirty-air lap-time interaction (multi-agent TUM-lineage): linear in gap, active 0.2-1.5 s, a<0; net LOSS at Bahrain (downforce), net GAIN at Monza (slipstream)",
+        "Ground-effect downforce loss following: 2021 ~35% at 20 m / ~47% at 10 m; 2022 launch ~5% at 20 m / ~18-20% at 10 m; 2025 ~20% at 20 m / ~35% at 10 m (regressed)",
+        "DRS impact on overtaking rate: 28.79 overtakes/race (2010) -> 60.63 (2011) after DRS introduced",
+        "Overtaking probability (Sulsters, per race): 0.10 (Mexico) to 0.40 (USA)"
+      ],
+      "modelling_recommendation": "Model overtaking lap-by-lap on cumulative race time (the Heilmeier/TUM approach), not continuous position. Per lap: (1) sort cars by cumulative time; (2) for each adjacent pair compute the trailing car's time advantage; (3) a pass occurs only if advantage >= t_gap_overtake (the per-circuit difficulty number) minus a small straight-line-speed term (~0.03 s/km/h of top-speed delta). Use the TUM per-circuit table directly as your overtaking-difficulty parameter: ~1.3 s for easy tracks (Bahrain, Silverstone, Suzuka), ~1.75 s mid (Monza), 3.75 s for Monaco/Singapore/Montreal (effectively unpassable on pace). For a stochastic flavour, gate the pass behind an overtaking-probability p (Sulsters: 0.1-0.4, lower on hard tracks). Track position 'value' emerges automatically from a minimum-gap clamp: if a faster car is below the threshold, hold it at min_t_dist (0.5 s) behind and inflate its lap time accordingly, plus add a per-lap duel penalty (0.3 s) - this makes a trapped faster car bleed its entire pace surplus each lap and is what drives undercut/overcut pit strategy. DRS: grant a fixed bonus (-0.4 to -0.5 s/lap) when the gap is within 1.0 s at lap start, only from lap 3 and not for ~2 laps after a safety car; this lowers the effective threshold so a within-DRS car needs ~0.8 s/lap raw pace to clear. Dirty air: cheapest realistic model is f1metrics' tyre-wear multiplier (x1.1 while within ~1 s) so following costs degradation rather than instantaneous time; a more physical option (multi-agent TUM paper) is a gap-dependent linear lap-time delta active only between 0.2-1.5 s, with the SIGN set per circuit - a penalty at high-downforce tracks (Bahrain/Monaco) and a small slipstream BENEFIT at low-downforce tracks (Monza). For the 2022+ ground-effect era, scale the dirty-air penalty down vs the pre-2022 era but note it has crept back up by 2024-25; treat the magnitude as a tunable parameter calibrated to historical overtake counts rather than a fixed published s/lap, because public data is in downforce-% not seconds. Apply a small fixed penalty (~0.3-0.5 s) to the overtaken car the lap a pass completes to ease multi-car passing and avoid oscillation/infinite-loop swaps (the TUM code explicitly guards against re-passing loops when t_overtake_loser is too small).",
+      "citations": [
+        "https://github.com/TUMFTM/race-simulation",
+        "https://github.com/TUMFTM/race-simulation/blob/master/racesim/src/race.py",
+        "https://f1metrics.wordpress.com/2014/10/03/building-a-race-simulator/",
+        "https://vu-business-analytics.github.io/internship-office/papers/paper-sulsters.pdf",
+        "https://arxiv.org/abs/2602.23056",
+        "https://arxiv.org/abs/2512.21570",
+        "https://www.the-race.com/formula-1/exclusive-new-data-f1-aero-losses-ruining-close-racing/",
+        "https://www.astonmartinf1.com/en-GB/news/feature/strategically-speaking-f1-strategy-explained-with-tom-mccullough",
+        "https://www.semanticscholar.org/paper/A-Race-Simulation-for-Strategy-Decisions-in-Circuit-Heilmeier-Graf/ea0fc33114882148e114cbeb4b80b13f580c5d0b"
+      ]
+    },
+    {
+      "topic": "Optimizing F1 race strategy (pit timing, number of stops, tire compounds) under uncertainty: Monte Carlo simulation, dynamic programming/exhaustive enumeration, robust vs expected-value optimization, RL, and real-time safety-car re-optimization",
+      "key_findings": [
+        {
+          "claim": "The de-facto open-source reference is the TUM FTM 'race-simulation' (Heilmeier et al.). It splits into a deterministic/exhaustive optimizer (racesim_basic) for free-track strategy and a multi-agent Monte Carlo simulator (racesim) for probabilistic robustness evaluation. It is lap-discretized (one timestep = one lap) for speed, and ships .ini parameter files for 121 F1 races (2014-2019).",
+          "detail": "racesim_basic does exhaustive enumeration assuming no competitors; racesim adds car-to-car interactions (overtaking, traffic), random failures, FCY/SC phases via a 'ghost car', starting-performance scatter and lap-time noise. Mode is chosen by no_sim_runs: ==1 gives a single deterministic race exported to CSV; >1 triggers Monte Carlo with mcs_analysis() producing histograms/distributions of finishing time and position. The whole thing is open source (MIT-style) and directly implementable in Python/NumPy.",
+          "numbers": "121 race param sets (2014-2019); lap-wise discretization; multi-process up to 200 concurrent jobs",
+          "source_url": "https://github.com/TUMFTM/race-simulation",
+          "confidence": "high"
+        },
+        {
+          "claim": "Lap time is an additive model: T_lap = t_base + fuel-mass term + tire-degradation term + pit/FCY/SC/DRS corrections + Gaussian noise. This is the standard functional form across the literature and is what you should implement.",
+          "detail": "From the Spielberg 2019 param file: base = qualifying time t_q plus a race-pace gap (t_q=63.003 s, t_gap_racepace=4.036 s). Fuel effect = t_lap_sens_mass * current_fuel_mass with t_lap_sens_mass=0.019 s per kg; fuel burns at b_fuel_perlap=1.549 kg/lap from m_fuel=110 kg at start (so a full tank costs ~2.1 s/lap, decaying to 0). DRS gives t_drseffect=-0.322 s. Tire degradation is a per-compound polynomial in tire age (laps) selectable as lin/quad/cub/ln: linear t_tire = k_0 + k_1_lin*age; quadratic t_tire = k_0 + k_1_quad*age + k_2_quad*age^2. Example (Hamilton, Spielberg): soft k_0=0.0384, k_1=0.0232 s/lap; medium k_1=0.0167 s/lap; hard k_1=0.0100 s/lap; quadratic k_2 ~ 0.0001-0.0007 s/lap^2. Gaussian lap-time noise sigma is driver-specific, ~0.46-0.86 s.",
+          "numbers": "t_q=63.003s; t_gap_racepace=4.036s; t_lap_sens_mass=0.019 s/kg; b_fuel_perlap=1.549 kg/lap; m_fuel=110 kg; DRS=-0.322s; soft k_1=0.0232, med 0.0167, hard 0.0100 s/lap; lap noise sigma 0.46-0.86s",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/racesim/input/parameters/",
+          "confidence": "high"
+        },
+        {
+          "claim": "Pit-stop time loss is modeled as in-lap loss + standstill (tire change) + out-lap loss, totalling roughly 20-22 s on a free track, and is HALVED (~10 s) under a safety car because the field is already running slow. This SC effect is the single most important strategic lever and must be in the model.",
+          "detail": "Spielberg 2019: t_pit_tirechange_min=1.9 s standstill (plus 0.43-1.37 s team-specific), t_pitdrive_inlap=2.691 s, t_pitdrive_outlap=11.396 s -> combined drive-through ~14.1 s plus standstill ~ total ~16-22 s. Industry rule of thumb: ~20 s normal pit loss, ~10 s under SC. Under SC the per-lap time itself is scaled by mult_t_lap_sc=1.6; under VSC/FCY by mult_t_lap_fcy=1.4. Total race length tot_no_laps=71 for this circuit.",
+          "numbers": "standstill 1.9s (+0.43-1.37s team); inlap 2.691s; outlap 11.396s; ~20s normal pit loss vs ~10s under SC; SC lap multiplier 1.6, VSC/FCY 1.4",
+          "source_url": "https://www.total-motorsport.com/monaco-gp-race-strategy-2026/",
+          "confidence": "high"
+        },
+        {
+          "claim": "Heilmeier et al. (2020) 'Application of Monte Carlo Methods...' is THE paper for stochastic F1 strategy. It models accidents/failures, full-course-yellow & safety-car phases, driver start performance, and lap-time/pit-stop variability with empirical discrete distributions, and uses a 'ghost car' to inject SC dynamics realistically. Typical validation run count: 10,000 runs of a 20-car race.",
+          "detail": "Concrete empirical distributions (from pars_mcs.ini): probability of N safety-car phases in a race p_sc_quant=[0.455, 0.413, 0.099, 0.033] for N=0,1,2,3 (i.e. ~54.5% chance of at least one SC). SC duration distribution (laps 1-10) p_sc_duration=[0, 0.182, 0.25, 0.227, 0.193, 0.057, 0.068, 0.023, 0, 0] (mode ~3-4 laps). VSC duration p_vsc_duration=[0.479, 0.396, 0.021, 0.104] for 1-4 laps. SC start-timing distribution across race thirds p_sc_start=[0.364, 0.136, 0.136, 0.08, 0.193, 0.091]. P(VSC follows a retirement)=0.227. Team failure probabilities per race 0.041-0.225. Driver start-performance offsets mean -0.097..+0.102 s, sigma 0.098-0.245 s. Pit-stop duration sampled from team-specific Fisk (log-logistic) distributions (e.g. Mercedes shape/loc/scale = 1.563, -0.046, 0.48). NOTE: an official erratum to this paper exists (Appl. Sci. 2020, 10, 5745) - check it before copying numbers.",
+          "numbers": "10,000 runs (20 cars); P(>=1 SC)=0.545; SC duration mode 3-4 laps; VSC 1-2 laps (87% of cases); P(VSC|failure)=0.227; team failure 4-22.5%; pit duration ~ Fisk/log-logistic",
+          "source_url": "https://www.mdpi.com/2076-3417/10/12/4229",
+          "confidence": "high"
+        },
+        {
+          "claim": "Exhaustive enumeration over stops/compounds is tractable and is the recommended baseline. The TUM optimizer loops over number of stops, then uses itertools to enumerate compound sequences, then (for a free track) places stop laps by solving/searching; because order of compounds doesn't change total free-track time, it uses combinations_with_replacement to prune.",
+          "detail": "Algorithm: for n_stops in [min_no_pitstops .. max_no_pitstops]: generate compound assignments for n_stops+1 stints via itertools.combinations_with_replacement(available_compounds, n_stops+1) (order-independent for free-track time) or itertools.product(...) if order matters; filter out single-compound strategies when enforce_diff_compounds=True (FIA rule: >=2 dry compounds must be used); keep only strategies containing the mandated starting compound if fixed. For each compound set, optimal stop laps on a free track minimize total time and can be found by a quadratic/convex optimization (degradation is convex) or by enumerating integer stop laps. State for full DP is (lap, current compound, tire age); Bellman recursion minimizes remaining race time. Real F1 races: typically 1-3 stops, 3 compounds -> only tens to low-hundreds of candidate strategies, so brute force over compound-sets x stop-laps is cheap.",
+          "numbers": "loop n_stops in [min..max]; stints = n_stops+1; combinations_with_replacement(compounds, n_stops+1); FIA rule >=2 dry compounds; practical 1-3 stops",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/helper_funcs/src/get_strat_combinations.py",
+          "confidence": "high"
+        },
+        {
+          "claim": "Aguad & Thraves (2024, EJOR) formalize the competitive two-car problem as a zero-sum FEEDBACK STACKELBERG GAME solved by dynamic programming: each lap the leader chooses (stay/pit + compound) first, then the follower responds; both also pick a starting compound simultaneously pre-race. This is the rigorous game-theoretic upgrade to single-car DP.",
+          "detail": "State per car includes lap, tire compound, tire age, and gap/position; they report solving instances with 'hundreds of millions of states'. Findings: a strategic driver vs a non-strategic opponent raises win probability by >15%; win-probability-maximizing play is riskier than time-gap-minimizing play; yellow flags tend to benefit the trailing/underperforming driver (because cheap pit stops let them recover). Companion SSRN paper (Aguad & Thraves) frames the same as a zero-sum feedback Stackelberg game.",
+          "numbers": "two-player zero-sum Stackelberg DP; hundreds of millions of states; +15% win probability from strategic play; yellow flags favor trailing car",
+          "source_url": "https://ideas.repec.org/a/eee/ejores/v319y2024i3p908-919.html",
+          "confidence": "high"
+        },
+        {
+          "claim": "Robust vs expected-value optimization: because the time-optimal deterministic strategy is often NOT the most robust once safety cars are included, you should optimize a statistic of the OUTCOME DISTRIBUTION (e.g. expected finishing position, P(win), or a CVaR/worst-case tail), not just expected race time. Monte Carlo over the SC/failure distributions gives you that distribution.",
+          "detail": "Heilmeier et al. (2020) explicitly motivate Monte Carlo as a way to 'assess the ROBUSTNESS of race strategies' - run each candidate strategy through N stochastic races and compare the full distribution of finishing time/position, not a point estimate. Practical recipe: (1) enumerate candidate strategies (exhaustive), (2) for each, run N Monte Carlo races sampling SC/VSC/failures/noise, (3) score by E[position], P(podium/win), and a tail measure (e.g. 90th-percentile worst outcome / CVaR), (4) pick the strategy on the efficient frontier per risk appetite. Aguad & Thraves show the win-maximizing strategy is deliberately riskier (higher variance) than the gap-minimizing one - concrete evidence the objective choice changes the answer.",
+          "numbers": "score each strategy over N MC runs by E[pos], P(win), and CVaR/tail; robust optimum != deterministic time-optimum once SCs included",
+          "source_url": "https://www.mdpi.com/2076-3417/10/12/4229",
+          "confidence": "high"
+        },
+        {
+          "claim": "Reinforcement-learning approaches now exist and beat fixed baselines. Thomas et al. (2025) use a Deep Recurrent Q-Network (DRQN) for pit/compound decisions on top of Mercedes' Monte Carlo simulator and report finishing P5.33 vs P5.86 for the team SOTA. Heilmeier's repo also ships a DQN 'Virtual Strategy Engineer'.",
+          "detail": "Thomas et al. (2025) 'Explainable RL for F1 Race Strategy': DRQN; 24-feature state (track id, SC status {Full/Virtual/None}, position 1-20, race progress 0-1, current compound, deg/lap, tire-availability flags, gaps to leader/ahead/behind scaled to [-1,1], lap-time ratio); 4 actions/lap (no-pit, pit soft/medium/hard); reward +1 per lap survived, -10 per extra pit, -1000 invalid action, terminal = 100x F1 points (25 for P1). Hyperparams: lr=1e-3, gamma=0.99, replay buffer 1000 episodes, target update every 100, eps starts 1.0; ~1920 sims for testing, ~900/track for generalization; explainability via TimeSHAP (5% MAE) and VIPER decision-tree surrogate (92.6% acc). Heilmeier's VSE: two supervised NNs (pit-yes/no + compound choice) trained on 2014-2019 timing data, plus per-track DQN models. Newer arXiv work (2025-2026) adds Soft Actor-Critic for combined energy+tire strategy (8-dim state, ~4 h training) and multi-agent learning-based strategies.",
+          "numbers": "DRQN: 24-state, 4-action; reward +1/lap, -10 extra pit, -1000 invalid, terminal 100x points; lr 1e-3, gamma 0.99, buffer 1000, target/100, ~1920 train sims; result P5.33 vs SOTA P5.86",
+          "source_url": "https://arxiv.org/html/2501.04068v1",
+          "confidence": "high"
+        },
+        {
+          "claim": "Real-time pit-wall re-optimization on a safety car: the strategist re-runs the simulation/optimizer live the moment an SC/VSC is declared, because the SC roughly halves pit loss (~20s -> ~10s) and flips undercut vs overcut economics. The decision reduces to comparing delta-time of pitting-now vs staying-out across the remaining-race distribution.",
+          "detail": "Operational pattern: strategy is decided lap-by-lap from live telemetry (tire temps, deg rate, gaps), not fixed pre-race. On SC deployment, re-evaluate by (a) recomputing pit loss with the SC multiplier (TUM: mult_t_lap_sc=1.6, so the in-lap/out-lap penalty shrinks because everyone is slow), (b) re-running the candidate-strategy Monte Carlo from the current state, (c) choosing the strategy maximizing expected position over the remaining laps. Undercut (pit early, exploit fresh-tire pace) loses value under SC since out-lap pace is capped; overcut/'pit under SC' gains value. Quantitatively: a normal stop costs ~20s of track position; under SC ~10s, often a 'free' stop. The undercut/overcut comparison is the fresh-tire out-lap delta vs the old-tire in-lap delta of the rival - a 1-2 lap delta-time lookup, the lightweight version of the full DP that fits the few-seconds decision window.",
+          "numbers": "pit loss ~20s normal -> ~10s under SC (~halved); SC lap multiplier 1.6; decision = remaining-race MC re-run / undercut-overcut delta-time within seconds",
+          "source_url": "https://www.astonmartinf1.com/en-GB/news/feature/strategically-speaking-f1-strategy-explained-with-tom-mccullough",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Foundational lineage: Bekker & Lotz (2009) built the first race simulation for strategy evaluation (discrete-event, validated on three 2005 races); Heine & Thraves (2023) and Aguad & Thraves (2024) add dynamic programming; Bonomi et al. (2023) use evolutionary algorithms; Duhr et al. (2023) add energy allocation. This chain is the canonical citation set.",
+          "detail": "Bekker, J. & Lotz, W. (2009) 'Planning Formula One race strategies using discrete-event simulation', J. Operational Research Society 60(7):952-961 - models car failures, passing, pit stops; time-based DES; validated on 3 races from 2005. Subsequent DP work (Heine & Thraves 2023; Aguad & Thraves 2024 EJOR) and evolutionary work (Bonomi et al. 2023) build on the same simulation-then-optimize idea. Heilmeier's 2022 TUM PhD thesis ('Simulation of circuit races for the objective evaluation of race strategy decisions') is the consolidated reference.",
+          "numbers": "Bekker & Lotz 2009 JORS 60(7):952-961, validated on 3 races from 2005 season",
+          "source_url": "https://ideas.repec.org/a/pal/jorsoc/v60y2009i7d10.1057_palgrave.jors.2602626.html",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "Monte Carlo run counts: TUM racesim default no_sim_runs=1 (deterministic); switch to MC at no_sim_runs>1; Heilmeier et al. (2020) validate with 10,000 runs of a 20-car race; industry articles cite 'thousands to millions' but ~10,000 is the standard for a converged outcome distribution",
+        "Lap time model: T_lap = t_q + t_gap_racepace + t_lap_sens_mass*fuel_mass + tire_deg(age,compound) + DRS + SC/FCY/pit corrections + N(0,sigma)",
+        "t_q (qualifying ref) = 63.003 s; t_gap_racepace = 4.036 s (Spielberg 2019)",
+        "Fuel: t_lap_sens_mass = 0.019 s/kg; b_fuel_perlap = 1.549 kg/lap; m_fuel start = 110 kg -> full tank ~2.1 s/lap decaying linearly to 0",
+        "Tire degradation (linear): t_tire = k_0 + k_1_lin*age; soft k_1~0.0232, medium ~0.0167, hard ~0.0100 s/lap; quadratic k_2 ~ 0.0001-0.0007 s/lap^2 (Spielberg 2019, Hamilton)",
+        "DRS effect = -0.322 s/lap",
+        "Pit stop: standstill t_pit_tirechange_min = 1.9 s (+0.43-1.37 s team); inlap loss 2.691 s; outlap loss 11.396 s; total free-track pit loss ~20 s; under SC ~10 s",
+        "Safety car / VSC lap-time multipliers: SC mult_t_lap_sc = 1.6; VSC/FCY mult_t_lap_fcy = 1.4",
+        "P(N safety cars) = [0.455, 0.413, 0.099, 0.033] for N=0,1,2,3 -> P(>=1 SC) = 0.545",
+        "SC duration (laps 1-10) = [0, 0.182, 0.25, 0.227, 0.193, 0.057, 0.068, 0.023, 0, 0]; mode 3-4 laps",
+        "VSC duration (laps 1-4) = [0.479, 0.396, 0.021, 0.104]; P(VSC | retirement) = 0.227",
+        "Team failure probability per race = 0.041-0.225; driver lap-time noise sigma = 0.46-0.86 s; start-performance offset mean -0.097..+0.102 s, sigma 0.098-0.245 s",
+        "Pit-stop duration distribution: team-specific Fisk / log-logistic (e.g. Mercedes shape/loc/scale = 1.563, -0.046, 0.48)",
+        "Race length example tot_no_laps = 71 (Spielberg/Austria 2019)",
+        "Exhaustive search size: F1 practical 1-3 stops x 3 compounds -> tens to low-hundreds of candidate strategies; use itertools.combinations_with_replacement(compounds, n_stops+1)",
+        "DP state = (lap, current compound, tire age); Aguad-Thraves competitive DP solves 'hundreds of millions of states', gives >15% win-prob uplift",
+        "RL (DRQN, Thomas 2025): 24-feature state, 4 actions/lap; reward +1/lap, -10 extra pit, -1000 invalid, terminal 100x points; lr 1e-3, gamma 0.99, replay 1000 eps, target/100; result P5.33 vs SOTA P5.86",
+        "FIA rule to encode: >=2 distinct dry compounds must be used in a dry race (constrains compound enumeration)"
+      ],
+      "modelling_recommendation": "Build it in three layers and reuse the open-source TUM FTM 'race-simulation' code (github.com/TUMFTM/race-simulation) as scaffolding. LAYER 1 - lap-discretized simulator: total race time = sum over laps of T_lap, where T_lap = base(t_q + race-pace gap) + 0.019*fuel_mass(lap) + tire_deg(age,compound) + DRS - and add pit loss on stop laps (~20s split into inlap 2.7s + standstill 1.9s + outlap 11.4s) and scale laps under SC by 1.6 / under VSC by 1.4. Model tire_deg as a per-compound polynomial in tire age; linear (k_0 + k_1*age) is the cheap default, quadratic if you have the data (soft k_1~0.023, med ~0.017, hard ~0.010 s/lap). Fuel mass = 110 - 1.549*lap kg. LAYER 2 - optimization: (a) DETERMINISTIC/free-track baseline by exhaustive enumeration - loop n_stops in 1..3, enumerate compound sequences with itertools.combinations_with_replacement(compounds, n_stops+1), enforce the FIA >=2-compound rule, and for each compound set place stop laps by integer search or a convex/quadratic solve (degradation is convex so optimum is unique); this is the racesim_basic approach and runs in milliseconds. (b) For the competitive/exact version, solve the DP over state=(lap, compound, tire_age) with a Bellman backward recursion minimizing remaining time; upgrade to Aguad-Thraves zero-sum feedback Stackelberg DP for two-car interaction (leader chooses, follower responds each lap). LAYER 3 - robustness via Monte Carlo: do NOT just pick the deterministic time-optimum. For each candidate strategy from Layer 2, run ~10,000 stochastic races sampling: number of SCs from [0.455,0.413,0.099,0.033], SC start lap and duration (mode 3-4 laps), VSC after failures (p=0.227, 1-2 laps), team failures (4-22.5%), per-lap Gaussian noise (sigma 0.46-0.86s), and Fisk-distributed pit durations. Score each strategy by the OUTCOME DISTRIBUTION - E[finishing position], P(win/podium), and a tail/CVaR measure - then choose on the risk-appetite frontier (win-maximizing is deliberately riskier/higher-variance than gap-minimizing). Use the 'ghost car' trick (Heilmeier 2020) to inject SC dynamics: run a virtual SC-paced car and clamp real cars to it during SC laps, which correctly bunches the field and halves effective pit loss. REAL-TIME PIT WALL: keep a fast (vectorized NumPy) version that, on SC declaration, re-runs the candidate-strategy Monte Carlo FROM THE CURRENT STATE (current lap, tire age, gaps) with the SC pit-loss (~10s) and SC lap multiplier active, and re-ranks; for the sub-second undercut/overcut call, fall back to a 1-2 lap delta-time comparison (fresh-tire out-lap delta vs rival old-tire in-lap delta). GOTCHAS: (1) check the official erratum to Heilmeier 2020 (Appl. Sci. 10, 5745) before copying distribution numbers; (2) the repo's cubic tire model has a known bug reusing quadratic coefficients - use lin/quad; (3) all the tire/lap coefficients above are circuit- and season-specific (Spielberg 2019) - refit per track from FastF1/free-practice data; (4) encode the FIA two-compound rule or your enumerator will return illegal strategies.",
+      "citations": [
+        "https://github.com/TUMFTM/race-simulation",
+        "https://www.mdpi.com/2076-3417/10/12/4229",
+        "https://www.mdpi.com/2076-3417/10/17/5745",
+        "https://www.mdpi.com/2076-3417/10/21/7805",
+        "https://ieeexplore.ieee.org/document/8570012",
+        "https://ideas.repec.org/a/eee/ejores/v319y2024i3p908-919.html",
+        "https://www.sciencedirect.com/science/article/abs/pii/S0377221724005484",
+        "https://doi.org/10.2139/ssrn.4470115",
+        "https://ideas.repec.org/a/pal/jorsoc/v60y2009i7d10.1057_palgrave.jors.2602626.html",
+        "https://www.semanticscholar.org/paper/Planning-Formula-One-race-strategies-using-Bekker-Lotz/983be6667d33c39245fae7f6aeaaa01124c73b8a",
+        "https://arxiv.org/html/2501.04068v1",
+        "https://arxiv.org/html/2512.21570v1",
+        "https://arxiv.org/pdf/2602.23056",
+        "https://arxiv.org/pdf/2603.01290",
+        "https://www.total-motorsport.com/monaco-gp-race-strategy-2026/",
+        "https://www.astonmartinf1.com/en-GB/news/feature/strategically-speaking-f1-strategy-explained-with-tom-mccullough",
+        "https://www.sigmachinelearning.com/post/monte-carlo-game-theory-machine-learning-the-race-strategy-triangle-for-formula-1",
+        "https://github.com/TUMFTM/race-simulation/blob/master/helper_funcs/src/get_strat_combinations.py",
+        "https://github.com/TUMFTM/race-simulation/blob/master/helper_funcs/src/calc_tire_degradation.py"
+      ]
+    },
+    {
+      "topic": "Surrogate modelling and data fusion for accelerating expensive simulators, applied to real-time F1 strategy (instant emulation + live Bayesian tyre-deg re-estimation)",
+      "key_findings": [
+        {
+          "claim": "A surrogate (emulator/meta-model) approximates an expensive simulator from a modest set of input-output pairs, then evaluates in milliseconds instead of hours; typical architectures are Gaussian process regression (kriging), neural networks, and tree ensembles (XGBoost), each trading accuracy/interpretability/cost.",
+          "detail": "Surrogate replaces the simulator inside optimization, sensitivity, and uncertainty-quantification loops. Empirical comparisons find ANNs and gradient-boosted trees often outperform GP/kriging surrogates on accuracy AND compute, with XGBoost frequently the strongest on precision and efficiency; GPs remain valuable for their built-in uncertainty (predictive variance). For a Monte Carlo F1 race sim, you want a regressor mapping {strategy params, lap, tyre age, compound, traffic/gap, track state} -> {predicted lap time / finishing position / outcome distribution}.",
+          "numbers": "GP/kriging vs ML: XGBoost reported more precise + more compute-efficient than kriging in benchmark UQ studies (qualitative ranking, no single universal % given)",
+          "source_url": "https://en.wikipedia.org/wiki/Surrogate_model",
+          "confidence": "high"
+        },
+        {
+          "claim": "Surrogates enable real-time / latency-sensitive deployment by collapsing simulator runtime from hours to sub-millisecond\u2013second inference, i.e. 3\u20136 orders of magnitude speedup.",
+          "detail": "This is the core enabler for in-race use: instead of running a fresh Monte Carlo race sim (seconds to minutes) for every candidate pit-window, a trained NN surrogate returns predictions essentially instantly, so thousands of strategy permutations can be scored per pit decision. The CFD literature gives the clearest hard numbers, and the same principle transfers to race sims.",
+          "numbers": "Neural-field aero surrogate: <0.1 s inference vs ~19 h CFD = ~6 orders of magnitude speedup; another model: 0.0012 s inference = ~100,000x speedup online; component breakdown ~80 ms geometry encoding + ~8 ms field prediction; neural operators: <1 s = >3 orders of magnitude",
+          "source_url": "https://arxiv.org/html/2505.14704v1",
+          "confidence": "high"
+        },
+        {
+          "claim": "Multi-fidelity data fusion combines a cheap low-fidelity model with sparse high-fidelity data via the Kennedy-O'Hagan autoregressive co-kriging model: f_H(x) = rho * f_L(x) + delta(x).",
+          "detail": "rho is a scalar capturing the proportional relationship between low- and high-fidelity functions; delta(x) is an independent GP discrepancy term for systematic differences. The joint covariance is K = [[k_LL, rho*k_LL],[rho*k_LL, rho^2*k_LL + k_dd]]. Emukit implements both linear (this AR1) and non-linear (NARGP) versions in Python. For F1: low-fidelity = fast analytical/deterministic lap model or coarse sim; high-fidelity = full stochastic Monte Carlo sim or real telemetry; fuse to get cheap-but-accurate predictions.",
+          "numbers": "Reported case: multi-fidelity GP reached MSE 15.62 degC^2 using only 6% of possible high-fidelity simulations, vs >94 degC^2 for single-fidelity GP; general rule-of-thumb ~an order of magnitude fewer high-fidelity simulator calls",
+          "source_url": "https://www.emergentmind.com/topics/multi-fidelity-gaussian-process-surrogate-modeling",
+          "confidence": "high"
+        },
+        {
+          "claim": "Online Bayesian linear regression IS a Kalman filter: regression weights theta are the hidden state, the covariate vector x_t^T is the (time-varying) observation matrix H_t, observation noise R = sigma^2; this gives exact recursive-least-squares / Bayesian-LR posterior updates in O(m^2) per step.",
+          "detail": "LG-SSM form: z_t ~ N(F z_{t-1}, Q), y_t ~ N(H_t z_t, R) with F=I, Q=0 (static weights) or Q>0 (slowly drifting weights \u2014 exactly what you want for tyre-deg coefficients that change as track rubbers in / temperature shifts). Setting Q>0 makes the filter adaptively forget old laps. This is directly implementable for a live tyre-deg updater: model lap_time = a + b*tyre_age (+ fuel term), put [a,b] in the state, update [a,b]'s Gaussian posterior every completed lap, set Q to control how fast deg estimate adapts.",
+          "numbers": "Update cost O(m^2) per observation, m = number of regression weights (here ~2-4); exact one-pass posterior; prior example Sigma0 = 10*I, F=I, Q=0",
+          "source_url": "https://probml.github.io/dynamax/notebooks/linear_gaussian_ssm/kf_linreg.html",
+          "confidence": "high"
+        },
+        {
+          "claim": "A Bayesian state-space framework for F1 tyre degradation has been published (Dec 2025), modelling lap time as baseline pace + fuel effect + latent tyre-degradation random walk, with pit stops as state resets, fit on free FastF1 timing data.",
+          "detail": "Observation: lap_time = baseline + fuel_effect + tyre_deg_effect; state transition: tyre wear as a random walk (latent pace accumulating per lap); pit stop resets the degradation state to a fresh-compound baseline and updates fuel mass deterministically. Extensions: compound-specific deg rates, time-varying deg, skewed-t observation model for asymmetric driver errors. Beats an ARIMA(2,1,2) baseline. Case study: Hamilton, 2025 Austrian GP. NOTE: this paper uses Hamiltonian Monte Carlo (Stan), i.e. batch MCMC, not a live filter \u2014 but the random-walk state-space structure is exactly what a Kalman/particle filter implements recursively for true real-time use.",
+          "numbers": "Fuel coefficient reported by PDF summarizer as 0.107 s/kg (LOW CONFIDENCE \u2014 see flag; standard F1 value is ~0.03-0.04 s/kg); deg rate ~0.08-0.12 s/lap; MAE ~0.3-0.4 s/lap; ~15-22% RMSE reduction vs ARIMA (these numbers were summarizer-extracted from the PDF, not directly verified)",
+          "source_url": "https://arxiv.org/abs/2512.00640",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Standard F1 fuel-weight effect is roughly 0.03-0.04 seconds per lap per kg of fuel (~0.25-0.40 s per 10 kg), so this term is a known, near-linear correction to bake into the lap-time/surrogate model.",
+          "detail": "Use this to fuel-correct laps before estimating tyre deg, otherwise the falling fuel mass (car getting lighter ~1.5-2 kg/lap) masks/biases the deg signal. This is why the F1 tyre paper splits lap time into an explicit deterministic fuel term plus the latent deg state. The 0.107 s/kg figure my PDF summarizer reported for arXiv:2512.00640 is ~3x the well-established value, so treat it as a likely extraction error.",
+          "numbers": "0.03 s/kg typical (range 0.025-0.040 s/kg); Prost F1 Catalunya 2001 sim: 0.32 s per 10 kg; ~0.035 s/kg cited historically",
+          "source_url": "https://themotorsportmetrics.com/fuel-load-and-lap-time/",
+          "confidence": "high"
+        },
+        {
+          "claim": "Particle filters (sequential Monte Carlo) are the right tool when the tyre-deg / race state model is nonlinear or non-Gaussian (e.g. multi-modal: safety-car vs green, or a skewed-t error model), generalizing the Kalman filter at higher compute cost.",
+          "detail": "PF approximates the posterior with N weighted particles; handles nonlinearity/multimodality the (extended) Kalman filter cannot, but compute scales with N and real-time performance is a design constraint (degeneracy, resampling, importance density choice). For F1: a few hundred to a few thousand particles is typically tractable per lap. Use Kalman/Bayesian-LR if you keep the deg model linear-Gaussian (cheapest, exact); upgrade to PF only if you add the skewed-t / regime-switching (SC) structure.",
+          "numbers": "N particles drives cost/accuracy; hundreds-to-thousands feasible online on modern hardware; EKF cheaper but biased for strong nonlinearity",
+          "source_url": "https://en.wikipedia.org/wiki/Particle_filter",
+          "confidence": "high"
+        },
+        {
+          "claim": "A neural-network surrogate trained on a Monte Carlo F1 race simulator is an established, published approach for real-time strategy optimization (and ANN+MCTS is the canonical Formula-E precedent).",
+          "detail": "arXiv:2512.21570 (Dec 2025) trains a neural surrogate on Monte Carlo race-sim outputs to avoid repeated expensive simulation calls during inference, enabling near-instant strategy evaluation in-race (no clean per-number benchmark extractable from the PDF). The Formula-E paper (Springer NCA 2020) combines ANNs with Monte Carlo Tree Search for race-strategy development, and the 'Virtual Strategy Engineer' (MDPI Applied Sciences 2020) uses ANNs for circuit-motorsport strategy decisions. Together these establish the exact pattern requested: MC sim -> NN surrogate -> fast strategy search.",
+          "numbers": "No clean per-number benchmarks legibly extractable from arXiv:2512.21570 PDF; relationship is qualitative (near-instant vs per-strategy MC runs)",
+          "source_url": "https://arxiv.org/pdf/2512.21570",
+          "confidence": "medium"
+        },
+        {
+          "claim": "A purely data-driven Bi-LSTM pit-stop classifier on FastF1 telemetry gives strong real-world numbers, useful as a benchmark / complement to a physics-based surrogate.",
+          "detail": "3 stacked Bi-LSTM layers (256/128/64 units) + dense sigmoid, 10-timestep windows, 10 telemetry features (lap time, position, compound, tyre life, track status, whether car ahead/behind pitted, etc.). Trained on 2020-2024 seasons. Not framed as a simulator surrogate (it's a classifier), but demonstrates achievable in-race predictive accuracy from the same free FastF1 data you'd use to train a surrogate / drive a live filter.",
+          "numbers": "99,928 laps; pit-stop minority class 3.5% (3,131 pits); after SMOTE 88,299/class; test F1=0.81, precision=0.77, recall=0.86, ROC-AUC=0.988, balanced acc=0.93; 2025 Chinese GP live: acc 70.6%, recall 92.3%, F1 0.80; Adam lr=5e-4, batch 32, 50 epochs",
+          "source_url": "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1673148/full",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "Surrogate inference speedup: 3-6 orders of magnitude vs simulator (e.g. <0.1 s vs ~19 h CFD; 0.0012 s = ~100,000x) [arxiv 2505.14704]",
+        "Surrogate inference latency: ~8 ms field prediction (+~80 ms geometry encoding) \u2014 well within an in-race per-lap (~90 s) or per-decision budget",
+        "Multi-fidelity AR1 / co-kriging: f_H(x) = rho*f_L(x) + delta(x); joint cov K=[[k_LL, rho*k_LL],[rho*k_LL, rho^2*k_LL+k_dd]]",
+        "Multi-fidelity efficiency: MSE 15.62 degC^2 using only 6% of high-fidelity sims vs >94 degC^2 single-fidelity; ~1 order of magnitude fewer HF calls",
+        "Kalman-as-Bayesian-LR: state=weights theta, F=I, Q=0 (static) or Q>0 (drifting deg), H_t=x_t^T, R=sigma^2; cost O(m^2)/lap, exact RLS posterior",
+        "F1 fuel effect: ~0.03-0.04 s/lap/kg (range 0.025-0.040); ~0.25-0.40 s per 10 kg; fuel burn ~1.5-2 kg/lap \u2014 fuel-correct before estimating deg",
+        "Tyre-deg model (F1 state-space, arxiv 2512.00640): lap_time = baseline + fuel_effect + tyre_deg(random walk); pit = state reset to fresh-compound baseline",
+        "Tyre-deg magnitude (medium-conf, summarizer-extracted): ~0.08-0.12 s/lap deg rate; MAE ~0.3-0.4 s/lap; ~15-22% RMSE reduction vs ARIMA(2,1,2)",
+        "Particle filter: N=hundreds-to-thousands of particles feasible online; use when adding nonlinear/multimodal (safety-car regime, skewed-t errors) structure",
+        "Bi-LSTM pit classifier benchmark: F1=0.81, recall=0.86, ROC-AUC=0.988 on 99,928 FastF1 laps (2020-2024); minority pit class only 3.5%",
+        "Data source for all F1 work: FastF1 Python API (free, public timing/telemetry) \u2014 same data trains the surrogate AND drives the live filter"
+      ],
+      "modelling_recommendation": "Two complementary components.\n\n(A) PyTorch MLP surrogate of the Monte Carlo race sim. Run the MC sim offline to generate training data: sample inputs X = {pit lap(s), start compound, stint compounds, starting fuel, track state, gap to rivals, SC probability, lap index, tyre age} and labels Y = {predicted lap time OR final finishing position/Delta OR the outcome distribution's mean+variance}. Architecture: a 3-5 hidden-layer MLP (e.g. 256-128-64, ReLU, dropout ~0.2), Adam lr~5e-4, MSE loss for regression; normalize inputs. To preserve the MC sim's stochasticity, either (i) predict mean and log-variance (heteroscedastic Gaussian NLL loss) so you keep an uncertainty estimate, or (ii) train an ensemble of 5 MLPs and use spread as uncertainty. This gives ~ms inference, so you can score thousands of strategy permutations per pit decision instead of re-running the sim. If you have a cheap analytical lap model too, wrap it as low-fidelity and use multi-fidelity fusion (Emukit linear/NARGP, or just feed the LF prediction as an extra MLP input) to cut required MC runs ~10x \u2014 implement the Kennedy-O'Hagan AR1 form f_H = rho*f_L + delta. Gotcha: GP surrogates give uncertainty for free but scale O(n^3) and are weaker than NN/XGBoost on accuracy+speed in benchmarks; prefer MLP or XGBoost for the main surrogate, reserve GP/co-kriging for the data-fusion layer where uncertainty and few HF points matter.\n\n(B) Kalman / Bayesian live tyre-deg updater. Model each stint's pace as lap_time_corrected = a + b*tyre_age, where lap_time_corrected = raw_lap_time - fuel_effect (fuel_effect = 0.03 s/kg * remaining_fuel_kg; subtract this first using a known burn rate ~1.6 kg/lap). Put the state z=[a,b] (intercept = fresh-tyre pace, slope = deg rate s/lap) into a Kalman filter: F=I, H_t=[1, tyre_age_t], R=sigma_lap^2 (lap-time noise, ~0.1-0.3 s^2), and crucially Q=small diagonal>0 so the deg estimate adapts as the track evolves (rubber-in, temperature, clouds). This is exactly recursive Bayesian linear regression \u2014 exact O(m^2) Gaussian posterior update every completed lap, giving a live [a,b] mean+covariance you can extrapolate to forecast remaining-stint pace and the optimal pit lap. At a pit stop, reset the state (re-inflate covariance / reset to a fresh-compound prior) \u2014 the state-reset trick from arXiv:2512.00640. Tune Q by how fast you want to trust new laps vs history. Upgrade path: if you want compound-specific behavior, multi-modal safety-car regimes, or the published skewed-t error model, swap the Kalman filter for a particle filter (a few hundred-thousand particles, still real-time) \u2014 same state, nonlinear/non-Gaussian capable. Validate against FastF1 historical races. Honest caveats: the specific F1 deg/fuel numbers from arXiv:2512.00640 came via a PDF auto-summarizer and the 0.107 s/kg fuel figure is ~3x the well-established ~0.03 s/kg, so treat that paper's exact constants as unverified and re-derive coefficients by fitting FastF1 data yourself; the paper itself uses batch HMC/Stan, so the real-time recursive filter is your adaptation, not their published method.",
+      "citations": [
+        "https://en.wikipedia.org/wiki/Surrogate_model",
+        "https://arxiv.org/pdf/1511.00926",
+        "https://arxiv.org/html/2505.14704v1",
+        "https://www.neuralconcept.com/post/applying-machine-learning-in-cfd-to-accelerate-simulation",
+        "https://www.emergentmind.com/topics/multi-fidelity-gaussian-process-surrogate-modeling",
+        "https://link.springer.com/article/10.1007/s00158-020-02583-7",
+        "https://arxiv.org/pdf/2208.03115",
+        "https://github.com/EmuKit/emukit",
+        "https://emukit.github.io/multifidelity-emulation/",
+        "https://probml.github.io/dynamax/notebooks/linear_gaussian_ssm/kf_linreg.html",
+        "https://www.mathworks.com/help/ident/ug/recursive-algorithms-for-online-estimation.html",
+        "https://en.wikipedia.org/wiki/Particle_filter",
+        "https://arxiv.org/abs/2512.00640",
+        "https://arxiv.org/pdf/2512.00640",
+        "https://arxiv.org/pdf/2512.21570",
+        "https://link.springer.com/article/10.1007/s00521-020-04871-1",
+        "https://mdpi.com/2076-3417/10/21/7805/htm",
+        "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1673148/full",
+        "https://themotorsportmetrics.com/fuel-load-and-lap-time/",
+        "https://f1briefing.com/fuel-load-vs-lap-time-f1-performance-analysis/"
+      ]
+    },
+    {
+      "topic": "Public data sources & APIs for calibrating an F1 strategy / tyre-degradation model on real race data in Python (FastF1 + Jolpica-Ergast)",
+      "key_findings": [
+        {
+          "claim": "FastF1 is the primary Python library for per-lap, stint, compound, tyre-life, track-status and telemetry data; session.laps returns a pandas-DataFrame subclass (Laps) with all the columns needed for tyre-degradation calibration.",
+          "detail": "Workflow: import fastf1; fastf1.Cache.enable_cache('~/fastf1_cache'); session = fastf1.get_session(2024, 'Bahrain', 'R'); session.load(); laps = session.laps. session.load() pulls laps, telemetry, weather and race-control messages from F1's live timing APIs. laps is a Laps object (subclass of pandas.DataFrame). Key tyre-degradation columns: LapTime (timedelta), LapNumber (int), Stint (int), Compound (SOFT/MEDIUM/HARD/INTERMEDIATE/WET/UNKNOWN), TyreLife (laps on current tyre incl. laps before data start), FreshTyre (bool, new tyre at stint start), PitInTime / PitOutTime (session-time timedeltas), TrackStatus (string of concatenated status codes that occurred during the lap), IsAccurate (bool, passed validation - critical filter for degradation work), Deleted / DeletedReason, Sector1/2/3Time, SpeedI1/I2/FL/ST (km/h), Driver, Team, Position. Useful Laps methods: pick_drivers(), pick_quicklaps(threshold default 1.07 i.e. 107% of fastest), pick_compounds(), pick_track_status(status, how='equals'|'contains'|'excludes'|'any'|'none'), pick_wo_box() (drop in/out laps), pick_box_laps(), pick_fastest().",
+          "numbers": "pick_quicklaps default threshold 1.07 (107%); weather_data sampled ~1/minute; Compound enum: SOFT, MEDIUM, HARD, INTERMEDIATE, WET, UNKNOWN, TEST_UNKNOWN",
+          "source_url": "https://docs.fastf1.dev/core.html",
+          "confidence": "high"
+        },
+        {
+          "claim": "FastF1's underlying data source is the official F1 live-timing service (with schedule/results backfilled from the Ergast/Jolpica API); caching is built in and strongly recommended.",
+          "detail": "All API requests are cached locally once you call fastf1.Cache.enable_cache(path). Caching should almost always be enabled to speed up scripts and to avoid hitting upstream rate limits. The session timing/telemetry data comes from F1's live timing API; non-live metadata (event schedule, classification) can come from the Ergast-compatible backend (now Jolpica). The F1ApiSupport / Ergast-availability is exposed on the event schedule. Cache is a simple on-disk folder; once populated, re-runs do not re-download.",
+          "numbers": "Cache call: fastf1.Cache.enable_cache('/path/to/cache')",
+          "source_url": "https://docs.fastf1.dev/getting_started/basics.html",
+          "confidence": "high"
+        },
+        {
+          "claim": "Jolpica-Ergast (api.jolpi.ca) is the drop-in, backwards-compatible successor to the shut-down ergast.com API; base URL is http://api.jolpi.ca/ergast/f1/ and it serves results, laps, pitstops, qualifying, standings, etc.",
+          "detail": "Endpoints (each must end with '/' or '.json'): /ergast/f1/circuits/, /ergast/f1/drivers/, /ergast/f1/constructors/, /ergast/f1/{season}/{round}/results/, /ergast/f1/{season}/{round}/laps/, /ergast/f1/{season}/{round}/pitstops/, /ergast/f1/{season}/qualifying/, /ergast/f1/{season}/driverstandings/, /ergast/f1/{season}/constructorstandings/, /ergast/f1/{season}/sprint/, /ergast/f1/status/, /ergast/f1/seasons/. For gaps, the original Ergast docs at ergast.com/mrd/ still apply. Ergast's own ergast.com endpoint was deprecated at end of 2024.",
+          "numbers": "Base: http://api.jolpi.ca/ergast/f1/",
+          "source_url": "https://github.com/jolpica/jolpica-f1/blob/main/docs/README.md",
+          "confidence": "high"
+        },
+        {
+          "claim": "The Jolpica laps endpoint gives per-lap times per driver; the pitstops endpoint gives pit-stop DURATION in seconds plus lap and clock time.",
+          "detail": "Laps: GET http://api.jolpi.ca/ergast/f1/{season}/{round}/laps/ -> MRData.RaceTable.Races[0].Laps, each Lap has number and a Timings array of {driverId, position, time} where time is the lap time as 'm:ss.sss' (e.g. '1:37.284'). You can filter to one driver: /{season}/{round}/drivers/{driverId}/laps/ and one lap: /{season}/{round}/laps/{lapNumber}/. Pitstops: GET http://api.jolpi.ca/ergast/f1/{season}/{round}/pitstops/ -> each PitStop has {driverId, lap, stop, time (HH:mm:ss clock), duration}. duration is the stationary+lane time in seconds as a string, e.g. '20.006', and per the docs 'including pit entry, exit and red flag time, if necessary'. Verified live: 2024 Bahrain (round 1) laps endpoint returns MRData total=1129 lap-records, e.g. {driverId:'max_verstappen', position:'1', time:'1:37.284'}.",
+          "numbers": "Example pit-stop duration field: \"20.006\" (seconds). Example lap time: \"1:37.284\". 2024 Bahrain laps total=1129 records.",
+          "source_url": "https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/pitstops.md",
+          "confidence": "high"
+        },
+        {
+          "claim": "Jolpica rate limits are strict: 4 requests/second burst and 500 requests/hour sustained (unauthenticated); exceeding returns HTTP 429.",
+          "detail": "Maintainer-stated limits: burst 4 req/s, sustained 500 req/hour for unauthenticated use; the maintainer warns this may DECREASE once self-service API tokens exist, and a lower ~200 req/hour figure has also been quoted as a load-adjusted floor. No built-in retry; recommended mitigation is to reduce call volume via filtering, request a token for higher limits, and add your own client-side backoff. Because laps are paginated at max 100 records/page, a full race's lap data (1000+ records) needs many requests - so cache aggressively. FastF1 with caching is the better path for bulk per-lap timing; use Jolpica directly mainly for pit-stop durations and results which FastF1 does not expose as cleanly.",
+          "numbers": "Burst 4 req/s; sustained 500 req/hour (some sources: 200/hour load-adjusted); pagination limit default 30, MAX 100, offset default 0; 429 on exceed",
+          "source_url": "https://github.com/jolpica/jolpica-f1/discussions/80",
+          "confidence": "high"
+        },
+        {
+          "claim": "FastF1 TrackStatus integer codes let you flag safety-car / VSC / red-flag laps to exclude them from degradation fitting.",
+          "detail": "Single-digit string codes (can be concatenated within one lap's TrackStatus): '1' = track clear/green; '2' = yellow flag; '4' = Safety Car; '5' = Red Flag; '6' = Virtual Safety Car deployed; '7' = VSC ending (actual end marked by a return to '1'). Code '3' has never been observed. For clean tyre-deg data, filter laps.pick_track_status('1', how='equals') (green-only) and laps.pick_wo_box(), then optionally pick_quicklaps().",
+          "numbers": "Codes: 1 green, 2 yellow, 4 SC, 5 red, 6 VSC deployed, 7 VSC ending; 3 unused",
+          "source_url": "https://docs.fastf1.dev/api.html",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "FastF1 install: pip install fastf1 (current series 3.8.x)",
+        "Enable cache: fastf1.Cache.enable_cache('~/fastf1_cache')",
+        "Load session: fastf1.get_session(2024, 'Bahrain', 'R').load()",
+        "pick_quicklaps default threshold = 1.07 (107% of fastest lap)",
+        "Jolpica base URL: http://api.jolpi.ca/ergast/f1/",
+        "Jolpica rate limit: 4 requests/second burst, 500 requests/hour sustained (unauth); HTTP 429 on breach",
+        "Jolpica pagination: limit default 30, MAX 100, offset default 0",
+        "Laps endpoint: http://api.jolpi.ca/ergast/f1/{season}/{round}/laps/ (Timings[] = {driverId, position, time})",
+        "Pitstops endpoint: http://api.jolpi.ca/ergast/f1/{season}/{round}/pitstops/ (duration in seconds, e.g. '20.006')",
+        "Per-driver laps: http://api.jolpi.ca/ergast/f1/{season}/{round}/drivers/{driverId}/laps/",
+        "2024 Bahrain GP (round 1) laps endpoint: MRData total = 1129 lap records",
+        "Example lap time format: '1:37.284' (m:ss.sss); pit clock time format: HH:mm:ss",
+        "TrackStatus codes: 1=green, 2=yellow, 4=SafetyCar, 5=Red, 6=VSC deployed, 7=VSC ending",
+        "Weather sampling: ~once per minute (AirTemp, TrackTemp, Humidity, Pressure, Rainfall, WindSpeed, WindDirection)"
+      ],
+      "modelling_recommendation": "Use FastF1 as the primary data source for tyre-degradation calibration and Jolpica-Ergast only for pit-stop durations and official results that FastF1 doesn't surface cleanly.\\n\\nData pipeline (Python):\\n1. import fastf1; fastf1.Cache.enable_cache('cache_dir') ONCE at startup (mandatory for speed + rate-limit safety).\\n2. session = fastf1.get_session(year, gp, 'R'); session.load(); laps = session.laps.\\n3. Build a clean degradation dataset: clean = laps.pick_wo_box().pick_track_status('1', how='equals').pick_quicklaps(1.07). This drops in/out laps, non-green (SC/VSC/red/yellow) laps, and outliers. Keep also IsAccurate==True.\\n4. Convert LapTime/PitInTime/PitOutTime from pandas Timedelta to seconds via .dt.total_seconds().\\n\\nDegradation model: group clean laps by (Driver, Stint, Compound). Within each stint, regress LapTime_seconds on TyreLife (use TyreLife not just lap-in-stint count, because it accounts for laps run before the data window and reflects true tyre age). A simple per-compound model is: lap_time = base_pace(compound) + fuel_correction*(laps_remaining) + deg_rate(compound)*TyreLife, where deg_rate is the slope (s/lap) you calibrate. Fuel effect (~0.03-0.06 s/lap per lap of fuel burned) is roughly linear and must be removed/co-fitted before attributing the residual slope to tyre wear, otherwise fuel-burn-off masks/offsets degradation. Fit base_pace and deg_rate per compound; allow a small quadratic TyreLife^2 term for cliff behaviour on softer compounds.\\n\\nStint/pit modelling: for each Stint, the boundary is where Compound changes or PitInTime/PitOutTime are non-null. Get the actual pit-loss time from Jolpica pitstops endpoint (duration field, seconds) and add a track-specific pit-lane delta (entry+exit travel time, ~18-25 s total time-lost depending on circuit; the Jolpica duration already says it includes entry/exit). Use this as the strategy model's pit penalty.\\n\\nGotchas: (a) TrackStatus on a lap is a CONCATENATION of all statuses seen that lap, so use how='contains'/'excludes' to catch partial-SC laps, not just exact match. (b) FastF1 timedeltas need .total_seconds(). (c) FastF1 telemetry/weather download is slow on first run \u2014 cache. (d) Jolpica laps are paginated at max 100/page and a race has 1000+ records, so prefer FastF1 for bulk per-lap timing and reserve Jolpica calls (with client-side backoff and ETag/local caching) for pit durations and results to stay under 4 req/s & 500 req/hr. (e) Compound values may be 'UNKNOWN' for some sessions/years \u2014 filter those out. (f) Jolpica has had reported lap-time data-correction issues for some 2024 races vs Ergast, so cross-check FastF1 lap times (from F1 live timing) against Jolpica when accuracy matters.",
+      "citations": [
+        "https://docs.fastf1.dev/core.html",
+        "https://docs.fastf1.dev/getting_started/basics.html",
+        "https://docs.fastf1.dev/api.html",
+        "https://github.com/theOehrly/Fast-F1",
+        "https://github.com/jolpica/jolpica-f1/blob/main/docs/README.md",
+        "https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/laps.md",
+        "https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/pitstops.md",
+        "https://github.com/jolpica/jolpica-f1/discussions/80",
+        "https://github.com/theOehrly/Fast-F1/discussions/445",
+        "http://api.jolpi.ca/ergast/f1/2024/1/laps/",
+        "https://github.com/jolpica/jolpica-f1/issues/103"
+      ]
+    },
+    {
+      "topic": "F1 race-strategy software landscape and what would \"shock\" a Williams Racing strategy team reviewing a portfolio for the \"Senior AI and Modelling Engineer - Strategy\" role (Grove, UK)",
+      "key_findings": [
+        {
+          "claim": "The Williams 'Senior AI and Modelling Engineer - Strategy' role sits in the Technology & Innovation Group and explicitly wants PyTorch/Scikit-learn ML applied to race strategy, simulation, data fusion, predictive analytics, anomaly detection and optimisation - a portfolio should speak that exact stack.",
+          "detail": "Williams careers postings for the strategy/AI roles call for: 'design and train AI models for vehicle dynamics, race strategy, and operational efficiency', 'build machine learning pipelines for simulation, data fusion, and predictive analytics', 'develop anomaly detection and optimisation models', delivering insights 'using state-of-the-art frameworks like PyTorch and Scikit-learn'. The Senior AI Engineer sibling role adds deep/reinforcement learning, 'scalable ML pipelines for real-time simulation', 'model interpretability and explainable AI', LLMs/transformers, Python + C++. The Head of Data & AI role is building/scaling a defined data platform and a team of data scientists. Match your portfolio's language and stack to these.",
+          "numbers": "Frameworks named: Python, PyTorch, TensorFlow, Scikit-learn; C++ beneficial. Role family: Technology & Innovation Group, Grove/Wantage UK.",
+          "source_url": "https://careers.williamsf1.com/job/senior-ai-engineer-in-grove-jid-118",
+          "confidence": "high"
+        },
+        {
+          "claim": "Williams' publicly-known modern tech direction is the Atlassian title partnership (Feb 2025) - 'System of Work', data consolidation and GenAI - NOT a public race-strategy simulator. The strategy engine itself is in-house and opaque, which is exactly the gap a strong portfolio can speak to.",
+          "detail": "Atlassian became Official Title + Technology Partner in Feb 2025 (described as the biggest deal in Williams' ~48-year history). Williams had 23 different tracking systems and is consolidating onto Jira Service Management, Confluence, Assets, plus Rovo (Atlassian's GenAI) for auto-reports and agent-surfaced insights. This shows a team actively modernising off spreadsheets/scattered tools - a candidate who builds clean, productionised, well-documented tooling fits the cultural moment. Results context: Williams scored 84 points total across 2018-2024 but 111 points in 2025 alone, signalling momentum and investment.",
+          "numbers": "Atlassian deal Feb 2025; 23 tracking systems being consolidated; Williams 84 pts (2018-2024 combined) vs 111 pts in 2025 alone.",
+          "source_url": "https://www.atlassian.com/blog/inside-atlassian/atlassian-williams-partnership",
+          "confidence": "high"
+        },
+        {
+          "claim": "The famous 'AWS powers F1' story is mostly about Formula 1 the championship/broadcast (F1 Insights, Track Pulse, IT support), not teams' pit-wall strategy engines. Do NOT assume Williams' strategy stack is AWS - that distinction itself signals you understand the landscape.",
+          "detail": "AWS is F1's (FOM's) official cloud/ML provider since 2018: ~300 sensors/car, >1 million data points/second, SageMaker for F1 Insights broadcast graphics, EC2 HPC cutting CFD/aero sim times 70% (helped 2022 car cut wake downforce loss from 50% to 15%), Bedrock GenAI cutting race-day IT issue resolution 86%. These are broadcast/FOM/regulatory CFD use cases. Individual teams choose their own clouds and keep strategy software proprietary; there is no public confirmation Williams' strategy simulator runs on AWS. Treat cloud-for-strategy as low confidence.",
+          "numbers": "~300 sensors/car; >1M data points/sec; CFD sim time cut 70%; wake downforce loss 50%->15% (2022 car); 86% faster IT resolution via Bedrock; AWS-F1 partnership since 2018.",
+          "source_url": "https://siliconangle.com/2025/11/03/aws-partnering-f1-reshape-auto-racing/",
+          "confidence": "medium"
+        },
+        {
+          "claim": "The de-facto industry pit-wall tool is Catapult RaceWatch (origin McLaren/Honda 2008, credited across ~20 world championships). The core method everywhere is Monte Carlo race simulation producing 3-4 baseline strategies, continuously re-adapted. A portfolio that out-thinks RaceWatch's known weaknesses (speed, uncertainty, explainability) is what impresses.",
+          "detail": "RaceWatch ingests ~200 channels of video/audio/data and offers ~300 visualisations in role-specific dashboards; models base lap time, tyre degradation, pit loss, per-corner overtake probability, driver-specific mistake/overtake variance, safety-car impact, fuel. Teams run large Monte Carlo batches to pre-compute 3-4 baseline strategies, then re-optimise live against actual degradation and rival pit calls (undercut/overcut). Monte Carlo strategy was pioneered by Neil Martin at McLaren in the 1990s. This is mature and ubiquitous - so novelty must come from HOW (speed, robustness, UQ, explainability), not WHAT.",
+          "numbers": "RaceWatch: ~200 data channels, ~300 visualisations; teams pre-compute 3-4 baseline strategies; Monte Carlo pioneered ~1990s (Neil Martin, McLaren); pit-wall decisions taken in seconds.",
+          "source_url": "https://www.autosport.com/f1/news/inside-the-strategy-system-thats-won-20-f1-world-championships/10801964/",
+          "confidence": "high"
+        },
+        {
+          "claim": "The single most credible 'shock' piece is an instant surrogate that replaces a Monte Carlo batch with a sub-second what-if engine. State-space tyre models already take 15-30s to run; a neural/GP surrogate giving full-race strategy distributions in <1s on the pit wall is a genuine, demonstrable edge.",
+          "detail": "A Bayesian state-space tyre-degradation model (arXiv 2512.00640, Dec 2025) takes 15-30 seconds per run - usable within a lap but too slow for sweeping thousands of what-ifs interactively. Classic Monte Carlo strategy needs large batches per decision. A portfolio that trains a fast surrogate (e.g. neural net / Gaussian process) on a calibrated Monte Carlo simulator, then serves full strategy-space evaluation (every pit-lap x compound combination with win/position probability) in <1 second, directly attacks the latency pain a real pit wall feels when a safety car drops with seconds to decide. Pair it with a clean what-if UI.",
+          "numbers": "Bayesian state-space tyre model runtime: 15-30 s/run (arXiv 2512.00640). Target to 'shock': interactive full-strategy-space what-if in <1 s. Pit-wall decision budget: seconds.",
+          "source_url": "https://arxiv.org/html/2512.00640v1",
+          "confidence": "medium"
+        },
+        {
+          "claim": "Live Bayesian tyre updating with explicit uncertainty bands is a published, beatable benchmark - and is exactly what deep-learning approaches lack. Hitting/beating ~1.08s RMSPE per stint with calibrated uncertainty, updating live each lap, is concrete and impressive.",
+          "detail": "The Bayesian state-space tyre paper models lap time = f(fuel mass) + latent tyre pace, with pit stops as state resets, giving human-readable degradation rates (~0.054 s/lap) AND 90% credible intervals (~+/-0.15 s/lap). Reported skewed-t model RMSPE 1.082 s vs ARIMA 1.520 s across three stints; CRPS 0.202 vs 0.324; live lap-44 prediction from data through lap 43. The authors explicitly argue prior deep-learning tyre work 'lack[s] interpretability and explicit uncertainty quantification - features that are crucial in operational race environments'. A portfolio that does live Bayesian updating with calibrated bands, benchmarked against these published numbers, signals you understand operational UQ, not just point prediction.",
+          "numbers": "RMSPE: 1.082 s (skewed-t Bayesian) vs 1.169 s (base) vs 1.520 s (ARIMA), 3 stints; CRPS 0.202 vs 0.324; degradation ~0.054 s/lap; 90% credible interval ~+/-0.15 s; live lap-by-lap update.",
+          "source_url": "https://arxiv.org/html/2512.00640v1",
+          "confidence": "high"
+        },
+        {
+          "claim": "Explainable strategy recommendation is an active, publishable but immature frontier - and Williams' own job spec demands 'model interpretability and explainable AI'. An RL/optimiser that outputs a recommendation PLUS a strategist-readable reason and counterfactual is directly on-brief.",
+          "detail": "RSRL (Race Strategy Reinforcement Learning, arXiv 2501.04068, Jan 2025) controls strategy in simulation and beat baselines on a 2023 Bahrain GP test (avg finish P5.33 vs best baseline P5.63, vs P5.5 expected pace) while adding explainability via feature importance, decision-tree surrogate models, and decision-tree counterfactuals to build strategist trust. Companion work (arXiv 2501.04067) forecasts 'tyre energy' from Mercedes-AMG PETRONAS historic telemetry using deep learning + XGBoost with feature-importance and counterfactual explanations. The margins are thin (tenths of a position) and explainability is bolted on, not native - so a portfolio with a natively explainable recommender (why-this-lap, what-if-not, confidence) is both novel and exactly what the role's 'explainable AI for strategists' wording asks for.",
+          "numbers": "RSRL avg finish P5.33 vs best baseline P5.63 (2023 Bahrain GP sim), pace baseline P5.5; explainability via feature importance + decision-tree surrogates + counterfactuals; companion paper uses real Mercedes-AMG PETRONAS telemetry.",
+          "source_url": "https://arxiv.org/abs/2501.04068",
+          "confidence": "high"
+        },
+        {
+          "claim": "Robust strategy under safety-car uncertainty is where races are won/lost and where naive optimisers fail. Demonstrating strategies optimised for the FULL distribution of SC outcomes (not the expected case), with 'ghost-car' SC modelling, would land hard.",
+          "detail": "Academic consensus (TUMFTM Heilmeier et al.) is that races are decided by random accidents/safety cars and that probabilistic effects must be modelled to find ROBUST strategies, using Monte Carlo with customised SC probability distributions and 'ghost car' approaches to test robustness. TUMFTM's open simulator covers tyre deg, fuel mass loss, pit loss, multi-car interactions and probabilistic SC/VSC, with parameter files auto-generated from a timing DB for 121 F1 races (2014-2019 seasons), in Python (cvxpy, quadprog). A portfolio that explicitly optimises for robustness (e.g. maximise expected position OR a risk-adjusted/CVaR objective across SC scenarios) and visualises the regret of the 'expected-case-optimal' plan when a SC actually hits would show genuine strategic maturity.",
+          "numbers": "TUMFTM simulator: 121 F1 races (2014-2019), Python 3.8 (cvxpy/cython/quadprog), lap-wise discretisation, Monte Carlo SC/VSC + 'ghost car'; models fuel mass loss, tyre deg, pit loss, interactions.",
+          "source_url": "https://github.com/TUMFTM/race-simulation/blob/master/README.md",
+          "confidence": "high"
+        },
+        {
+          "claim": "Public/academic models openly admit they are crippled by having only public timing data vs teams' proprietary sensor streams. The 'shock' is a candidate who builds a calibration harness that closes that gap on whatever data is available and quantifies the residual - showing you'd plug straight into real telemetry on day one.",
+          "detail": "A Bi-LSTM pit-stop predictor (Frontiers, 2025) hit precision 0.77 / recall 0.86 / F1 0.81 / balanced accuracy 0.93 on 99,928 laps (2020-2024), and 70.59% accuracy on the live 2025 Chinese GP - while explicitly conceding teams 'have access to proprietary data streams from hundreds of sensors' that the public-data model cannot match. A portfolio that (a) calibrates a simulator against real lap-time data, (b) reports calibration error honestly (e.g. RMSPE per stint), and (c) is architected so swapping public for proprietary telemetry only improves it, demonstrates the exact production-data mindset the role needs.",
+          "numbers": "Bi-LSTM pit predictor: precision 0.77, recall 0.86, F1 0.81, balanced accuracy 0.93 on 99,928 laps (2020-2024); 70.59% accuracy live 2025 Chinese GP; teams have 'hundreds of sensors' vs public data.",
+          "source_url": "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1673148/full",
+          "confidence": "high"
+        }
+      ],
+      "concrete_numbers": [
+        "Williams role stack (target your portfolio to it): Python + PyTorch + TensorFlow + Scikit-learn; C++ beneficial; explicit asks for 'real-time simulation', 'explainable AI', 'optimisation', 'anomaly detection' (Williams careers, jid-118)",
+        "RaceWatch (Catapult) pit-wall benchmark to beat: ~200 data channels, ~300 visualisations, Monte Carlo producing 3-4 baseline strategies, credited across ~20 world titles since 2008",
+        "Pit-wall decision budget: seconds (esp. on safety-car deployment) -> target interactive what-if surrogate in <1 s",
+        "Bayesian state-space tyre model (arXiv 2512.00640): runtime 15-30 s/run; RMSPE 1.082 s vs ARIMA 1.520 s over 3 stints; CRPS 0.202 vs 0.324; degradation ~0.054 s/lap; 90% credible interval ~+/-0.15 s/lap; live lap-by-lap update",
+        "RSRL explainable RL (arXiv 2501.04068): avg finish P5.33 vs best baseline P5.63 on 2023 Bahrain GP sim; explainability = feature importance + decision-tree surrogate + counterfactuals",
+        "Tyre-energy paper (arXiv 2501.04067): trained on REAL Mercedes-AMG PETRONAS telemetry, deep learning + XGBoost, feature-importance + counterfactual explanations",
+        "TUMFTM open simulator: 121 F1 races (2014-2019), Python (cvxpy/quadprog), Monte Carlo SC/VSC + 'ghost car' robustness, models fuel-mass loss/tyre deg/pit loss/multi-car interaction",
+        "Bi-LSTM pit predictor (Frontiers 2025): F1 0.81, balanced accuracy 0.93 on 99,928 laps (2020-2024); 70.59% live accuracy 2025 Chinese GP; openly limited by public-only data vs teams' 'hundreds of sensors'",
+        "AWS<->F1 (championship/FOM, NOT team strategy): since 2018; ~300 sensors/car; >1M data points/sec; CFD sim time -70%; wake downforce loss 50%->15% on 2022 car; SageMaker for broadcast Insights; Bedrock cut IT resolution 86%",
+        "Williams momentum/context: Atlassian title deal Feb 2025; consolidating 23 tracking systems; 84 pts total 2018-2024 vs 111 pts in 2025 alone"
+      ],
+      "modelling_recommendation": "Build ONE cohesive portfolio piece - a 'live strategy co-pilot' - that stacks four things F1 teams individually struggle with, then benchmark each against published numbers so claims are verifiable. (1) CALIBRATED SIMULATOR: fork/rebuild a lap-wise Monte Carlo race sim (use TUMFTM as reference architecture: lap-time = base_pace + fuel_mass_effect(decreasing) + tyre_deg(compound) + traffic; pit loss ~20-24s green / much less under SC; per-corner overtake probabilities). Calibrate on public timing data (FastF1) and REPORT residual error honestly per stint (target RMSPE in the ~1.0-1.5 s range to match the state-space/ARIMA literature). (2) LIVE BAYESIAN TYRE LAYER: implement a state-space/Kalman or particle-filter model (lap_time = f(fuel) + latent_degradation, pit = state reset) that updates each lap and emits CALIBRATED 90% credible intervals, not point estimates - explicitly beating/matching ARIMA 1.520 s RMSPE. This is the single highest-signal, defensible component. (3) SURROGATE SPEED-UP: train a neural net or GP surrogate on the Monte Carlo sim so the FULL strategy space (every pit-lap x compound x stop-count, with finishing-position probability) is evaluated in <1 second, enabling true interactive what-if on the pit wall - frame this as the answer to 'safety car just dropped, decide in seconds'. (4) ROBUST + EXPLAINABLE RECOMMENDER: optimise not the expected case but a risk-adjusted objective (e.g. CVaR / maximise P(finish ahead of rival)) across a distribution of safety-car scenarios using 'ghost-car' SC modelling; output a single recommendation PLUS a strategist-readable reason (feature importance), a counterfactual ('if no SC by lap 30, switch to 1-stop'), and a confidence band. GOTCHAS to call out (shows maturity): pit-loss and SC probability are track-specific and must be parameterised per circuit; tyre 'cliff' is non-linear so linear deg models break late-stint; thin margins (literature shows tenths of a position) mean uncertainty quantification matters more than a better point estimate; public data is a proxy - architect every component so swapping in proprietary sensor telemetry only improves it. POSITIONING: do NOT claim AWS powers team strategy (it powers FOM broadcast/IT); do explicitly mirror the job's words 'real-time', 'explainable AI', 'optimisation', 'data fusion'; ship it in PyTorch/Scikit-learn with clean docs to match both the stack and the Atlassian-era 'productionise off spreadsheets' culture. THE ONE-LINE SHOCK: 'a self-calibrating, uncertainty-aware strategy engine that turns a multi-second Monte Carlo batch into a sub-second, explainable what-if you can run live on the pit wall - and here are the calibration numbers proving it.'",
+      "citations": [
+        "https://careers.williamsf1.com/job/senior-ai-engineer-in-grove-jid-118",
+        "https://careers.williamsf1.com/job/senior-modelling-and-simulation-engineer-in-grove-jid-235",
+        "https://www.motorsportjobs.com/en/job/head-data-ai",
+        "https://www.atlassian.com/blog/inside-atlassian/atlassian-williams-partnership",
+        "https://siliconangle.com/2025/12/01/atlassians-system-work-become-engine-innovation-williams-racing/",
+        "https://racer.com/2025/02/11/williams-secures-huge-new-atlassian-title-partnership-deal",
+        "https://siliconangle.com/2025/11/03/aws-partnering-f1-reshape-auto-racing/",
+        "https://aws.amazon.com/blogs/machine-learning/how-formula-1-uses-generative-ai-to-accelerate-race-day-issue-resolution/",
+        "https://www.autosport.com/f1/news/inside-the-strategy-system-thats-won-20-f1-world-championships/10801964/",
+        "https://github.com/TUMFTM/race-simulation/blob/master/README.md",
+        "https://www.mdpi.com/2076-3417/10/12/4229",
+        "https://arxiv.org/html/2512.00640v1",
+        "https://arxiv.org/abs/2501.04068",
+        "https://arxiv.org/abs/2501.04067",
+        "https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2025.1673148/full"
+      ]
+    }
+  ],
+  "synthesis": {
+    "modelling_spec": "CONSOLIDATED BUILD BIBLE \u2014 F1 RACE-STRATEGY ENGINE (ground-effect era 2022-2024, lap-discretized, Heilmeier/TUM backbone).\n\n=== 0. CORE PHILOSOPHY ===\nLap-discretized (1 timestep = 1 lap). Cumulative race time per car. Three layers: (L1) deterministic+stochastic Monte-Carlo simulator, (L2) exhaustive/DP optimizer, (L3) PyTorch surrogate + Kalman live tyre updater. All circuit-specific constants are PLACEHOLDER DEFAULTS to be re-fit from FastF1 per event (see open_risks / data_playbook).\n\n=== 1. LAP-TIME MASTER EQUATION ===\nt_lap(d, L) = t_base(d) + k_fuel * m_fuel(L) + t_tyre(compound, age) + t_situational(d, L) + eps\nwhere\n  t_base(d) = t_q(track) + t_gap_racepace(track) + t_car_driver(d)\n      DEFAULTS: t_gap_racepace \u2248 4.0 s above pole (TUM Spielberg 4.036). t_q is the track pole reference. t_car_driver = per-driver/car delta in s (0 reference car), CALIBRATE.\n  FUEL: m_fuel(L) = m_fuel_start - b_fuel * L ; clamp >= 0.\n      m_fuel_start = 110 kg (default; 105 in 2017 configs). b_fuel = total_fuel/n_laps, clamp >= 1.6 kg/lap (TUM range 1.549-2.0).\n      k_fuel = 0.030 s/kg DEFAULT (track range 0.019 short low-fuel-sens e.g. Spielberg, to 0.036 long e.g. Yas Marina). => full 110 kg tank \u2248 3.3 s/lap at start, decaying linearly to 0. RECONCILIATION: ignore the 0.107 s/kg figure from arXiv:2512.00640 PDF-summary \u2014 it is ~3x the well-established value and a likely extraction error; use 0.03.\n  TYRE: t_tyre = k_0(compound) + k_1(compound)*age + k_2(compound)*age^2  (QUADRATIC default \u2014 captures gentle deg + cliff onset).\n      Linear (k_0 + k_1*age) = sparse-data fallback. Logarithmic (k_0 + k_1_ln*ln(k_2_ln*age+1)) = use only with rich FP long-run data (Heilmeier 2020a found it best for warm-up curvature). DO NOT use the repo's cubic form \u2014 known bug reusing quadratic coefficients.\n      DEFAULT compound coefficients (s/lap; ground-effect era, CALIBRATE per event):\n        k_0 (fresh offset rel. medium=0): SOFT -0.5, MEDIUM 0.0, HARD +0.5  (adjacent step ~0.5 s/lap, Austria-2025 state-space; FIA target deltas of M-H 1.2 / S-H 2.2 are NOT realised in practice \u2014 use ~0.5/~1.0).\n        k_1 (linear slope): HARD 0.010-0.030 (use 0.020), MEDIUM 0.017-0.045 (use 0.030), SOFT 0.023-0.090 (use 0.060). Softest cliff compounds up to 0.18.\n        k_2 (quadratic): 0.0001-0.0007 s/lap^2 default 0.0003; raise for soft/overheating-prone tracks to model cliff.\n      WARM-UP: add one-off cold-tyre penalty t_cold = +1.0 s on the out-lap (age==0). Optionally let first 1-3 laps have reduced/negative effective deg (state-space found nu starts negative as tyre warms).\n      GRAINING/THERMAL: NOT separate terms in v1 \u2014 absorb into per-event, per-compound k_1/k_2 fits from FP2 long-runs; flag overheating-prone tracks with steeper slope + earlier cliff.\n  NOISE: eps ~ N(0, sigma_lap^2), sigma_lap driver-specific 0.46-0.86 s (default 0.6 s). For driver-mistake outliers, optionally use skewed-t error (state-space paper) instead of Gaussian.\n\n=== 2. PIT LOSS ===\nOn a stop lap add PIT_LOSS[track] = in-lap loss + standstill + out-lap loss (delta vs staying out).\n  Split: standstill STATIONARY ~ N(mean 2.4, tail to 3.5 s); occasional botch +4 s; world record 1.80 s. In-lap ~2.7 s, out-lap ~11.4 s (Spielberg). Stationary is only ~10% of total \u2014 do not let pit-crew speed dominate.\n  DEFAULT per-track total green PIT_LOSS (s): Monaco 20, Barcelona 22, Silverstone 23, Bahrain 23, Monza 24, Singapore 28, Imola 28; GLOBAL DEFAULT 22. Range 18-30. Driven by pit-lane length & speed limit (80 km/h std, 60 km/h Monaco/Singapore).\n  FIA RULE: >=2 distinct dry compounds must be used in a dry race \u2014 enforce in enumerator.\n  DOUBLE-STACK: 2nd same-lap car gets queue penalty = first car stationary time \u2248 +2.5 s (compounds if 1st stop slow). Want ~4-6 s gap on pit entry.\n\n=== 3. STOCHASTIC SC/VSC MODEL (Heilmeier/TUM 2014-2019 fit) ===\nRECOMMENDED (categorical):\n  (a) #SC phases ~ categorical [P0,P1,P2,P3] = [0.455, 0.413, 0.099, 0.033] => P(>=1 SC)=0.545, E=0.71. SCALE to circuit P(>=1 SC): Singapore ~1.0, Baku ~0.86, Monaco ~0.25-0.29, Monza ~0.27, Paul Ricard ~0.10.\n  (b) Each SC start lap ~ empirical weights over [lap1, <20%, <40%, <60%, <80%, <100%] = [0.364, 0.136, 0.136, 0.080, 0.193, 0.091] (lap-1 spike + late bump \u2014 a flat hazard underweights both).\n  (c) SC duration (laps 1-10) ~ [0,0.182,0.25,0.227,0.193,0.057,0.068,0.023,0,0], mean ~4, mode 2-3.\n  (d) VSC: per modelled driver retirement-by-failure trigger VSC with p=0.227; team failure prob/race 0.041-0.225. VSC duration (laps 1-4) ~ [0.479,0.396,0.021,0.104], mean ~1.75.\nSIMPLER ALTERNATIVE: constant per-lap hazard lambda with 1-exp(-lambda*N_laps)=historical P(>=1 SC); each arrival SC (~0.55) or VSC (~0.45).\nLAP-TIME under neutralisation: multiply green t_lap by mult_t_lap_sc=1.6 (SC) / mult_t_lap_fcy=1.4 (VSC). Optional 1-lap forming phase at 1.2x.\nDEG & FUEL accrue fractionally: tyre deg *0.25 (SC) / *0.5 (VSC); fuel use *0.25 / *0.5.\nGHOST-CAR: run a virtual SC-paced car; clamp real cars to it during SC laps to bunch the field (closes gaps \u2014 big positional swings) \u2014 distinguish from VSC which PRESERVES gaps.\nCHEAP STOP: effective pit loss under SC \u2248 green*(1-0.50) (range 40-60%), under VSC \u2248 green*(1-0.35) (30-40%); absolute saving ~7-12 s (22 s -> ~10-14 s). Implement loss_eff = green_loss*(1-saving_frac), or per-track in/out deltas if available. Caveat: VSC can end with ~10-15 s warning \u2014 perfect-info sim overvalues VSC stops.\nNOTE: verify against the official erratum to Heilmeier 2020 (Appl. Sci. 10, 5745) before locking these numbers.\n\n=== 4. OVERTAKING SUBMODEL (lap-by-lap on cumulative time, TUM) ===\nPer lap: sort by cumulative time; for each adjacent pair, trailing car passes iff time_advantage >= t_gap_overtake[track] - t_gap_overtake_vel*(top_speed_delta).\n  t_gap_overtake (s/lap advantage REQUIRED, 2019 .ini): EASY Suzuka 1.26, Silverstone 1.35, Bahrain 1.38, Shanghai 1.50; MID Monza 1.755, Spa 1.83, COTA 1.83, Spielberg 2.01, Yas Marina 2.07, Catalunya 2.31, Budapest 2.415, Melbourne 2.70; HARD (\u2248unpassable) Monaco 3.75, Singapore 3.75, Montreal 3.75.\n  velocity modifier \u2248 -0.03 to -0.06 s per km/h top-speed delta (bigger straightline advantage lowers threshold). Equivalent team rule of thumb: need ~1 s/lap faster even WITH DRS (~0.8 s/lap clean-air).\n  STOCHASTIC option (Sulsters): even when threshold cleared, pass succeeds with p_overtaking per circuit 0.10 (Mexico) - 0.40 (USA); harder tracks lower p.\nDRS: bonus t_drs (negative, -0.4 to -0.5 s/lap default; TUM range -0.13 Montreal to -0.92 Singapore) applied when gap<=1.0 s at lap start, only from lap 3 (drs_allow_lap=3), disabled 2 laps after SC (drs_sc_delay=2).\nTRACK POSITION emerges from MIN-GAP CLAMP: a faster car below threshold is held at min_t_dist=0.5 s (0.8 s under SC) behind and its lap time inflated to sit there, bleeding its surplus pace each lap. Add duel penalty t_duel=0.3 s/lap to both cars when fighting, and t_overtake_loser=0.3 s to the passed car the lap a pass completes (guards re-pass oscillation loops \u2014 keep >=0.3 or infinite swaps occur).\nDIRTY AIR (2022+): cheapest = f1metrics tyre-wear multiplier x1.1 while within ~1 s (cost paid in deg). More physical (multi-agent TUM): linear-in-gap delta active 0.2-1.5 s, SIGN per circuit \u2014 LOSS at high-downforce (Bahrain/Monaco), small slipstream GAIN at low-downforce (Monza). Ground-effect following loss regressed from ~5%@20m / ~18%@10m (2022 launch) back toward ~20%@20m / ~35%@10m by 2025 \u2014 treat magnitude as a tunable calibrated to historical overtake counts (public data is downforce-%, not s/lap).\n\n=== 5. MONTE-CARLO + OPTIMIZATION ===\nL2 OPTIMIZER:\n  (a) Deterministic free-track baseline (racesim_basic): for n_stops in [1..3]: enumerate compound sequences via itertools.combinations_with_replacement(compounds, n_stops+1) (order-independent for free-track total time; use product if order matters); enforce FIA >=2-compound + mandated start compound; place stop laps by integer search or convex/quadratic solve (deg is convex => unique optimum). Tens-to-low-hundreds of candidates => milliseconds.\n  (b) Exact/competitive: DP over state=(lap, compound, tyre_age), backward Bellman minimising remaining time. Upgrade to Aguad-Thraves zero-sum feedback Stackelberg DP (leader chooses stay/pit+compound, follower responds each lap; both pick start compound pre-race) \u2014 solves hundreds of millions of states, +15% win prob vs non-strategic; yellow flags favour the trailing car.\nL3 ROBUSTNESS: for EACH candidate strategy run ~10,000 stochastic races sampling SC/VSC (Sec 3), failures, lap noise (sigma 0.46-0.86), Fisk/log-logistic pit durations (Mercedes shape/loc/scale 1.563,-0.046,0.48). DO NOT pick deterministic time-optimum \u2014 score by OUTCOME DISTRIBUTION: E[finishing position], P(win/podium), and a tail measure (CVaR / 90th-pct worst). Choose on the risk-appetite efficient frontier (win-maximising is deliberately higher-variance than gap-minimising). 10,000 runs is the converged standard.\nREAL-TIME PIT WALL: on SC declaration re-run candidate-strategy MC FROM CURRENT STATE (current lap, tyre age, gaps) with SC pit-loss (~10 s) + SC lap multiplier active, re-rank. For the sub-second undercut/overcut call, fall back to a 1-2 lap delta-time lookup: fresh-tyre out-lap delta (out-lap bonus ~1.0-1.5 s once warmed, steady ~1.0 s/lap fresh-vs-old) vs rival old-tyre in-lap delta. Undercut needs to be within ~1-2 s of rival, resolves over 2-3 laps; overcut wins when deg low or warm-up penalty high (gate on per-circuit passing difficulty).\n\n=== 6. SURROGATE (L3a) ===\nPyTorch MLP emulating the MC sim. Offline: sample X = {pit lap(s), start compound, stint compounds, start fuel, track state, gaps to rivals, SC prob, lap index, tyre age}; labels Y = {predicted lap time OR finishing position/Delta OR outcome mean+variance}. Arch: 3-5 hidden layers (256-128-64), ReLU, dropout ~0.2, Adam lr~5e-4, normalize inputs. Preserve stochasticity by EITHER (i) heteroscedastic Gaussian NLL predicting mean+log-variance, OR (ii) 5-MLP ensemble (spread = uncertainty). Inference ~ms => score thousands of pit-lap x compound x stop-count permutations per decision (target full strategy space in <1 s \u2014 the headline \"shock\"; state-space tyre models alone take 15-30 s/run). MULTI-FIDELITY: wrap a cheap analytical lap model as low-fidelity; fuse via Kennedy-O'Hagan AR1 f_H(x)=rho*f_L(x)+delta(x) (Emukit linear/NARGP) or just feed LF prediction as an extra MLP input \u2014 cuts required HF MC runs ~10x. Prefer MLP/XGBoost over GP for the main surrogate (GP O(n^3), weaker on accuracy+speed); reserve GP/co-kriging for the fusion layer where few-HF-points uncertainty matters.\n\n=== 7. LIVE BAYESIAN TYRE UPDATER (L3b) \u2014 highest-signal component ===\nRecursive Bayesian linear regression = Kalman filter. Per stint model corrected lap time = a + b*tyre_age, where corrected = raw_lap - fuel_effect (subtract k_fuel*remaining_fuel first, burn ~1.6 kg/lap). State z=[a (fresh-tyre pace), b (deg rate s/lap)]; F=I, H_t=[1, tyre_age_t], R=sigma_lap^2 (~0.1-0.3 s^2), Q=small diagonal>0 so the deg estimate ADAPTS as track rubbers-in / temp shifts (Q controls forgetting). Exact O(m^2) Gaussian posterior every completed lap => live [a,b] mean+covariance; extrapolate to forecast remaining-stint pace and optimal pit lap with CALIBRATED 90% credible intervals (target ~+/-0.15 s/lap; published deg ~0.054 s/lap). At a pit stop RESET state (re-inflate covariance / fresh-compound prior). Benchmark to beat: state-space skewed-t RMSPE 1.082 s vs ARIMA(2,1,2) 1.520 s, CRPS 0.202 vs 0.324 over 3 stints. UPGRADE to particle filter (few hundred-to-thousand particles, still real-time) only if adding compound-specific behaviour, SC regime-switching, or skewed-t errors (Kalman can't do non-Gaussian/multimodal). NOTE arXiv:2512.00640 itself uses batch HMC/Stan \u2014 the recursive filter is your adaptation; re-derive all constants from FastF1, do not copy its 0.107 s/kg.",
+    "default_parameters": [
+      "k_fuel (fuel sensitivity) = 0.030 s/kg DEFAULT (track range 0.019 short tracks - 0.036 long tracks); source high-confidence (TUM)",
+      "m_fuel_start = 110 kg (105 kg in 2017 configs); F1 max tank 110 kg; high confidence",
+      "b_fuel (fuel burn) = total_fuel/n_laps, clamp >= 1.6 kg/lap (TUM range 1.549-2.0 kg/lap); high confidence",
+      "Tyre k_0 fresh offset rel. medium: SOFT -0.5 s, MEDIUM 0.0 s, HARD +0.5 s (adjacent step ~0.5 s/lap); medium confidence (must calibrate)",
+      "Tyre k_1 linear deg slope: HARD 0.020, MEDIUM 0.030, SOFT 0.060 s/lap (full range 0.010-0.090; softest cliff up to 0.18); high confidence on range, low on per-event value",
+      "Tyre k_2 quadratic: 0.0003 s/lap^2 default (range 0.0001-0.0007); medium confidence",
+      "Cold-tyre out-lap penalty t_cold = +1.0 s (age==0); high confidence",
+      "Lap-time noise sigma_lap = 0.6 s default (driver range 0.46-0.86 s); high confidence",
+      "PIT_LOSS global default = 22 s; per-track Monaco 20, Barcelona 22, Silverstone 23, Bahrain 23, Monza 24, Singapore 28, Imola 28 s (range 18-30); medium confidence",
+      "Pit standstill = 2.4 s mean (tail to 3.5; record 1.80; botch +4); in-lap ~2.7 s, out-lap ~11.4 s; high confidence",
+      "Double-stack 2nd-car queue penalty = +2.5 s (~one stop duration); medium confidence",
+      "SC count categorical [P0,P1,P2,P3] = [0.455,0.413,0.099,0.033], P(>=1 SC)=0.545; high confidence",
+      "SC start-lap weights [lap1,<20,<40,<60,<80,<100%] = [0.364,0.136,0.136,0.080,0.193,0.091]; high confidence",
+      "SC duration (laps1-10) = [0,0.182,0.25,0.227,0.193,0.057,0.068,0.023,0,0], mean ~4; high confidence",
+      "VSC duration (laps1-4) = [0.479,0.396,0.021,0.104], mean ~1.75; high confidence",
+      "P(VSC | driver retirement-by-failure) = 0.227; team failure prob/race 0.041-0.225; high confidence",
+      "Circuit P(>=1 SC) overrides: Singapore ~1.0, Baku ~0.86, Monza ~0.27, Monaco ~0.25-0.29, Paul Ricard ~0.10; medium confidence",
+      "SC lap multiplier mult_t_lap_sc = 1.6; VSC mult_t_lap_fcy = 1.4; high confidence",
+      "Deg/fuel accrual under SC *0.25, under VSC *0.5; high confidence",
+      "Cheap-stop saving fraction: SC 0.50 (range 0.40-0.60), VSC 0.35 (0.30-0.40); high confidence",
+      "Overtaking threshold t_gap_overtake (s/lap): Suzuka 1.26, Silverstone 1.35, Bahrain 1.38, Monza 1.755, Monaco/Singapore/Montreal 3.75; high confidence",
+      "Overtaking velocity modifier = -0.03 to -0.06 s per km/h top-speed delta; high confidence",
+      "DRS: window 1.0 s, bonus -0.4 to -0.5 s/lap default (range -0.13 to -0.92), enable lap 3, disable 2 laps post-SC; high confidence",
+      "min_t_dist following clamp = 0.5 s (0.8 s under SC); t_duel = 0.3 s/lap; t_overtake_loser = 0.3 s; high confidence",
+      "Stochastic overtake probability p_overtaking = 0.10 (hard) to 0.40 (easy) per circuit; high confidence (Sulsters)",
+      "Dirty-air tyre-wear multiplier = x1.1 within ~1 s; medium confidence",
+      "Fresh-vs-old tyre advantage = ~1.0 s/lap steady, ~1.0-1.5 s out-lap bonus once warmed; medium confidence",
+      "Monte-Carlo run count = 10,000 races per candidate strategy; high confidence",
+      "Pit duration distribution = team-specific Fisk/log-logistic (Mercedes shape/loc/scale 1.563,-0.046,0.48); high confidence",
+      "Surrogate MLP: 256-128-64, ReLU, dropout 0.2, Adam lr 5e-4, heteroscedastic NLL or 5-model ensemble; high confidence",
+      "Kalman tyre updater: state [a,b], F=I, H=[1,age], R~0.1-0.3 s^2, Q small>0, reset at pit; high confidence",
+      "Live-updater benchmark target: RMSPE <= ~1.08 s, CRPS <= ~0.20 (beat ARIMA 1.52); high confidence"
+    ],
+    "data_playbook": "PRIMARY = FastF1 (per-lap timing/stint/compound/tyre-life/track-status/telemetry). SECONDARY = Jolpica-Ergast (api.jolpi.ca) for pit-stop DURATIONS and official results FastF1 does not surface cleanly.\n\nINSTALL & CACHE (mandatory): `pip install fastf1` (3.8.x). At startup ONCE: `import fastf1; fastf1.Cache.enable_cache('~/fastf1_cache')` \u2014 required for speed and to avoid upstream rate limits; first telemetry pull is slow, re-runs hit disk.\n\nLOAD: `session = fastf1.get_session(2024, 'Bahrain', 'R'); session.load(); laps = session.laps` (Laps = pandas.DataFrame subclass). session.load() pulls laps+telemetry+weather+race-control from F1 live timing.\n\nKEY COLUMNS for deg calibration: LapTime (timedelta), LapNumber, Stint (int), Compound (SOFT/MEDIUM/HARD/INTERMEDIATE/WET/UNKNOWN), TyreLife (true tyre age incl. pre-data laps \u2014 USE THIS not lap-in-stint), FreshTyre (bool), PitInTime/PitOutTime (session-time timedeltas, non-null marks stint boundary), TrackStatus (CONCATENATED codes for the lap), IsAccurate (bool \u2014 critical filter), Deleted/DeletedReason, Sector1/2/3Time, SpeedI1/I2/FL/ST (km/h for the straightline overtaking modifier), Driver, Team, Position.\n\nCLEAN DATASET (one line):\n`clean = laps.pick_wo_box().pick_track_status('1', how='equals').pick_quicklaps(1.07)` then keep `IsAccurate==True` and drop Compound=='UNKNOWN'. This drops in/out laps, all non-green laps, and 107% outliers. Convert times via `.dt.total_seconds()`.\nTrackStatus codes: 1=green, 2=yellow, 4=SafetyCar, 5=Red, 6=VSC deployed, 7=VSC ending (3 unused). Because codes are CONCATENATED within a lap, use how='contains'/'excludes' to catch partial-SC laps, not just equals.\nUseful Laps methods: pick_drivers(), pick_compounds(), pick_track_status(status, how=...), pick_wo_box(), pick_box_laps(), pick_fastest(), pick_quicklaps(threshold=1.07).\nWeather (~1/min): AirTemp, TrackTemp, Humidity, Rainfall, WindSpeed \u2014 use TrackTemp to flag overheating-prone deg.\n\nFIT PROCEDURE: group clean laps by (Driver, Stint, Compound). FUEL-CORRECT FIRST: subtract k_fuel*remaining_fuel_kg (k_fuel=0.03, burn ~1.6 kg/lap) before attributing residual slope to tyre \u2014 otherwise fuel burn-off (car ~1.6 kg/lap lighter) masks/biases the deg signal. Then regress corrected LapTime on TyreLife: lap_time = base_pace(compound) + deg_rate(compound)*TyreLife + (optional) k_2*TyreLife^2 for soft-compound cliff. This yields per-compound k_0/k_1/k_2 to replace the defaults.\n\nPIT DURATIONS (Jolpica): GET `http://api.jolpi.ca/ergast/f1/{season}/{round}/pitstops/` -> each PitStop {driverId, lap, stop, time(HH:mm:ss), duration} where duration in seconds e.g. '20.006' INCLUDING pit entry/exit/red-flag. Laps endpoint `/{season}/{round}/laps/` -> Timings[]={driverId,position,time '1:37.284'}. Per-driver: `/{season}/{round}/drivers/{driverId}/laps/`.\nJOLPICA LIMITS (strict): burst 4 req/s, sustained 500 req/hour unauth (some sources 200/hr); HTTP 429 on breach; pagination default 30, MAX 100/page, offset 0. A race has 1000+ lap records (2024 Bahrain total=1129) => use FastF1 for BULK per-lap timing; reserve Jolpica for pit durations + results with client-side backoff and local/ETag caching.\n\nOFFLINE FALLBACK: once the cache folder is populated (commit it or snapshot it), all FastF1 re-runs work fully offline \u2014 no re-download. Pre-warm the cache for your target circuits/seasons before any demo. For Jolpica, persist pulled pit-stop/results JSON to disk and read locally to stay under rate limits and survive offline.\n\nGOTCHAS: (a) all FastF1 times are Timedelta \u2014 always .total_seconds(); (b) Jolpica had reported lap-time correction issues for some 2024 races vs Ergast \u2014 cross-check FastF1 (F1 live timing) when accuracy matters; (c) Compound can be 'UNKNOWN' for some sessions \u2014 filter out; (d) Jolpica duration already includes entry/exit so don't double-count a separate pit-lane delta \u2014 but for PIT_LOSS-vs-staying-out you still need the track in/out travel penalty on top of the stationary part.",
+    "architecture": "Package `f1strategy/` \u2014 clean, documented, PyTorch/Scikit-learn stack to mirror the Williams job spec language (\"real-time simulation\", \"data fusion\", \"explainable AI\", \"optimisation\", \"anomaly detection\").\n\nf1strategy/\n  core/            # Python: lap-time model, tyre/fuel/pit/SC/overtaking equations, parameter dataclasses per circuit (the L1 model). Pure-Python reference impl, fully unit-tested and readable.\n  sim/             # Monte-Carlo race simulator: multi-car cumulative-time loop, ghost-car SC injection, retirement/failure sampling, vectorised NumPy for the 10k-run batch. Deterministic mode (n_runs==1) exports CSV; n_runs>1 -> outcome distributions (E[pos], P(win), CVaR).\n  fastloop/        # Rust hot loop (via PyO3/maturin) reimplementing sim/'s inner per-lap multi-car update for the 10,000-iteration MC batch \u2014 Rust gives the order-of-magnitude speedup needed so live re-optimisation stays sub-second. Python core stays the source of truth; Rust is a drop-in accelerator validated bit-for-bit against it.\n  optimize/        # L2: exhaustive enumerator (itertools.combinations_with_replacement, FIA 2-compound rule), convex stop-lap placement, backward-DP, and Aguad-Thraves Stackelberg DP for 2-car. Scores candidates over the MC distribution; risk-frontier selector.\n  surrogate/       # PyTorch MLP (256-128-64, heteroscedastic NLL or 5-model ensemble) trained offline on sim/ outputs => <1 s full-strategy-space what-if. Optional Emukit multi-fidelity (Kennedy-O'Hagan AR1) fusion layer wrapping the cheap analytical lap model.\n  live/            # Live Bayesian updater: Kalman filter (state [a,b]=fresh-pace+deg-rate) updating each lap with calibrated 90% credible bands; particle-filter upgrade path for non-Gaussian/regime-switching. Plus pit-decision re-optimiser triggered on SC/VSC. Anomaly detection (lap-time residual vs filter prediction) lives here too.\n  data/            # FastF1 + Jolpica pull/clean/calibrate harness (Sec data_playbook): produces per-circuit parameter files and reports RMSPE-per-stint calibration error honestly.\n  dashboard/       # Streamlit/Plotly what-if UI: pit-lap x compound heatmap of P(finish position), live tyre bands, recommendation + strategist-readable reason (feature importance) + counterfactual (\"if no SC by lap 30, switch to 1-stop\") + confidence. Mirrors RaceWatch's role-dashboard idea but adds the sub-second surrogate + UQ.\n  tests/           # pytest: equation unit tests, Rust-vs-Python parity, calibration regression (RMSPE bounds), FIA-rule enforcement, SC-distribution sampling sanity, surrogate-vs-sim accuracy, Kalman convergence vs synthetic stints.\n\nDATA FLOW: data/ -> per-circuit params -> core/sim/ (MC) -> surrogate/ (trained offline) + optimize/ (candidates) -> live/ (filter + re-optimise on SC) -> dashboard/. Architect every component so swapping public FastF1 data for proprietary sensor telemetry only improves it (state the residual gap explicitly). Ship in PyTorch/Scikit-learn with clean docs to match the post-Atlassian \"productionise off spreadsheets\" culture. Do NOT claim AWS powers team strategy (it powers FOM broadcast/IT only).",
+    "shock_factor": "Three elements most likely to genuinely impress a Williams strategy reviewer:\n\n1. SUB-SECOND, FULL-STRATEGY-SPACE WHAT-IF SURROGATE (the headline). Published state-space tyre models take 15-30 s/run and a classic Monte-Carlo batch needs thousands of runs per decision \u2014 too slow to sweep interactively when a safety car drops with seconds to decide. A PyTorch surrogate trained on the calibrated MC sim that returns finishing-position probability for EVERY pit-lap x compound x stop-count combination in <1 s directly attacks the real pit-wall latency pain. It mirrors the role's \"real-time simulation\" wording and out-thinks RaceWatch on the one axis (speed) teams actually feel. Frame: \"turns a multi-second Monte-Carlo batch into a sub-second, explainable what-if you can run live on the pit wall \u2014 here are the calibration numbers proving it.\" Optional Rust hot loop reinforces the production-grade speed story.\n\n2. LIVE BAYESIAN TYRE LAYER WITH CALIBRATED UNCERTAINTY, BENCHMARKED. A Kalman/particle filter updating fresh-pace + deg-rate every lap and emitting calibrated 90% credible bands (not point estimates), with state reset at pit stops, explicitly benchmarked to beat ARIMA (RMSPE ~1.08 vs 1.52 s, CRPS 0.20 vs 0.32). This is the single highest-signal, most defensible component because the published literature itself argues deep-learning tyre work \"lacks interpretability and explicit uncertainty quantification \u2014 features crucial in operational race environments.\" Demonstrating operational UQ, not just a better point prediction, signals you understand that with margins of tenths-of-a-position, quantified uncertainty wins races.\n\n3. ROBUST + NATIVELY EXPLAINABLE RECOMMENDER UNDER SC UNCERTAINTY. Optimise a risk-adjusted objective (CVaR / maximise P(finish ahead of rival)) across the FULL distribution of safety-car outcomes via ghost-car SC modelling \u2014 and visualise the REGRET of the naive expected-case-optimal plan when a SC actually hits. Output a recommendation PLUS a strategist-readable reason (feature importance), a counterfactual (\"if no SC by lap 30, switch to 1-stop\"), and a confidence band. This hits the job spec's explicit \"explainable AI\" and \"optimisation\" asks, and existing RL work (RSRL, +0.3 positions) bolts explainability on as an afterthought \u2014 a natively explainable robust recommender is both novel and exactly on-brief. Underpinning all three: a calibration harness that reports residual error HONESTLY per stint and is architected so swapping public data for proprietary telemetry only improves it \u2014 the production-data mindset that says you'd plug into real sensor streams on day one.",
+    "open_risks": [
+      "k_fuel 0.107 s/kg from arXiv:2512.00640 PDF-summary is ~3x the well-established ~0.03 s/kg and almost certainly an extraction error \u2014 REJECTED; default 0.03 but re-fit per track (track range 0.019-0.036 is real and large).",
+      "ALL tyre coefficients (k_0/k_1/k_2) are circuit- AND season-specific (defaults are Spielberg/Austria-2025 derived) \u2014 MUST re-fit per event from FastF1 FP2 long-runs; do not ship the defaults to a real race.",
+      "Compound pace deltas are often statistically INDISTINCT in clean data (state-space found hard vs medium not significant) \u2014 the assumed 0.5 s/lap adjacent step may not hold; calibrate, don't assume large fixed gaps.",
+      "Per-circuit PIT_LOSS values are mostly secondary/aggregator sources (medium confidence), not official FIA pit-delta tables \u2014 validate against Jolpica pit durations + observed in/out-lap deltas.",
+      "SC/VSC probabilities are a 2014-2019 fit; recent seasons differ (2022 1.77 cautions/race vs 2024 1.13, record 9-race no-SC run) and per-circuit P(SC) varies enormously \u2014 scale to current circuit history and CHECK the official erratum Appl. Sci. 10, 5745 before locking the distributions.",
+      "Cheap-stop saving fraction (SC 40-60%, VSC 30-40%) and the absolute 7-12 s saving are rules of thumb \u2014 the per-track in/out-lap split is the accurate version; derive from data where possible.",
+      "Dirty-air magnitude in the ground-effect era is published only as downforce-% (regressing year-on-year, ~5%@20m 2022 -> ~20% 2025), NOT s/lap \u2014 must be calibrated to historical overtake counts per circuit; sign flips by track (loss high-downforce, gain low-downforce).",
+      "Overtaking thresholds t_gap_overtake were tuned to pre-2022 racing; ground-effect cars changed following dynamics \u2014 re-validate against 2022-2024 overtake counts.",
+      "Heilmeier repo cubic tyre model has a known bug (reuses quadratic coefficients) \u2014 use linear/quadratic only.",
+      "arXiv:2512.00640 uses batch HMC/Stan (not a live filter) and several of its extracted constants are summarizer-derived and unverified \u2014 the recursive Kalman/PF is YOUR adaptation; re-derive constants by fitting FastF1 yourself.",
+      "Jolpica rate limits (4 req/s, 500/hr, possibly dropping to 200/hr) and reported 2024 lap-time correction issues vs Ergast \u2014 cache aggressively, cross-check against FastF1, prefer FastF1 for bulk timing.",
+      "Public timing data is a proxy for teams' hundreds of proprietary sensors \u2014 quantify the residual calibration gap (target RMSPE ~1.0-1.5 s) and state that proprietary telemetry only improves the model; do not overclaim accuracy.",
+      "VSC can end with ~10-15 s warning, so a perfect-information sim OVERVALUES VSC stops \u2014 model the information delay or flag the optimism.",
+      "Williams strategy stack is in-house/opaque; do NOT assume AWS powers team strategy (AWS is FOM broadcast/IT only) \u2014 positioning risk if claimed."
+    ]
+  }
+}

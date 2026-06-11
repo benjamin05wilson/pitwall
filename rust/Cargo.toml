@@ -1,0 +1,14 @@
+[package]
+name = "pitwall-native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+rand = "0.8"
+rand_distr = "0.4"
+rand_pcg = "0.3"

@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.ipynb_checkpoints/
+# build artifacts
+rust/target/
+build/
+dist/
+*.egg-info/
+# large/generated data (keep small cached JSON for reproducible demos)
+data/fastf1_cache/
+data/surrogate/*.npz
+data/surrogate/*.pt
+.DS_Store
+.venv/
+venv/
+
+# node
+node_modules/
+web/dist/
