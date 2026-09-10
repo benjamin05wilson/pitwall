@@ -21,7 +21,8 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 
 
 def _clean(o):
@@ -110,24 +111,24 @@ def _parse_strategy(spec: str, n_laps: int) -> Strategy:
 # --------------------------------------------------------------------------- #
 class OptimizeReq(BaseModel):
     circuit: str = "bahrain"
-    grid: int = 3
-    delta: float = 0.3
-    objective: str = "podium"
-    scenarios: int = 400
+    grid: int = Field(default=3, ge=1, le=20)
+    delta: float = Field(default=0.3, ge=-5, le=5)
+    objective: Literal["podium", "win", "points", "expected", "robust"] = "podium"
+    scenarios: int = Field(default=20, ge=1, le=100)
 
 
 class HeatmapReq(BaseModel):
     circuit: str = "bahrain"
-    grid: int = 3
-    delta: float = 0.3
+    grid: int = Field(default=3, ge=1, le=20)
+    delta: float = Field(default=0.3, ge=-5, le=5)
 
 
 class SimReq(BaseModel):
     circuit: str = "bahrain"
     strategy: str = "M-H"
-    grid: int = 3
-    delta: float = 0.3
-    scenarios: int = 400
+    grid: int = Field(default=3, ge=1, le=20)
+    delta: float = Field(default=0.3, ge=-5, le=5)
+    scenarios: int = Field(default=20, ge=1, le=100)
 
 
 class CalibrateReq(BaseModel):
@@ -177,15 +178,21 @@ def optimize(req: OptimizeReq) -> dict:
     model = _model(req.circuit)
     scen = _scenarios(req.circuit, req.scenarios)
     t0 = time.time()
-    from .sim.native import HAS_NATIVE
+    from .sim.native import backend_for
+    probe = with_focal(_rivals(req.circuit), _parse_strategy("M-H", model.config.n_laps),
+                       circuit_id=req.circuit, focal_model=model, focal_delta=req.delta)
+    backend = backend_for(probe, scen)
     res = run_optimize(model, _rivals(req.circuit), scen, circuit_id=req.circuit,
                        focal_grid=req.grid, focal_delta=req.delta,
-                       objective=req.objective, shortlist=12, use_native=HAS_NATIVE)
+                       objective=req.objective, shortlist=3, use_native=backend == "Rust")
     ms = (time.time() - t0) * 1000
     best, runner = res.best, res.ranked[1] if len(res.ranked) > 1 else res.best
     gap = runner.ensemble.mean_position - best.ensemble.mean_position
     return {
         "objective": req.objective, "scenarios": len(scen), "compute_ms": round(ms),
+        "backend": backend, "focal_model": "circuit defaults + explicit driver offset",
+        "rival_model": "generic circuit defaults; seeded pace offsets",
+        "seed": 7, "shortlist": len(res.ranked), "n_laps": model.config.n_laps,
         "best": {"label": best.strategy.label(), "n_stops": best.strategy.n_stops,
                  "pit_laps": list(best.strategy.pit_laps),
                  "compounds": [c.value for c in best.strategy.compounds],
@@ -211,7 +218,7 @@ def optimize(req: OptimizeReq) -> dict:
 def heatmap(req: HeatmapReq) -> dict:
     net = _surrogate()
     if net is None:
-        raise HTTPException(503, "surrogate not built; run scripts/build_surrogate.py")
+        raise HTTPException(503, "Optional heatmap unavailable: no usable surrogate checkpoint. Core optimisation remains available.")
     from .surrogate import encode
     import numpy as np
     model = _model(req.circuit)
@@ -248,7 +255,7 @@ def simulate(req: SimReq) -> dict:
     strat = _parse_strategy(req.strategy, model.config.n_laps)
     from .sim.native import HAS_NATIVE
     field = with_focal(_rivals(req.circuit), strat, circuit_id=req.circuit,
-                       focal_grid=req.grid, focal_delta=req.delta)
+                       focal_grid=req.grid, focal_delta=req.delta, focal_model=model)
     ens = evaluate(field, _scenarios(req.circuit, req.scenarios), use_native=HAS_NATIVE)
     hist = [int(x) for x in ens.positions]
     import numpy as np
@@ -410,7 +417,7 @@ def ghost(req: ReplayReq):
 
 @app.post("/api/field-strategy")
 def field_strategy(req: ReplayReq):
-    """The chosen car's live timeline as a best response to the *predicted* field
+    """The chosen car's historical timeline as a best response to the *predicted* field
     (undercut/overcut vs every rival)."""
     try:
         return CleanJSON(_field_strategy(req.year, req.gp, req.driver))
@@ -450,9 +457,7 @@ def race_map(req: RaceReq):
 
 @app.get("/api/live-stream")
 def live_stream(year: int = 2023, gp: str = "Bahrain", driver: str = "ALB", interval: float = 1.0):
-    """Server-Sent Events: the engine processing a race lap-by-lap in real time.
-    Uses a genuinely-live OpenF1 session if one is running, else streams the
-    chosen historical race at wall-clock pace (the live-pipeline demonstration)."""
+    """Server-Sent Events for historical replay only; never current telemetry."""
     from .replay import stream_events
 
     def gen():
@@ -468,7 +473,9 @@ def live_stream(year: int = 2023, gp: str = "Bahrain", driver: str = "ALB", inte
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "surrogate": _surrogate() is not None}
+    from .sim.native import HAS_NATIVE
+    return {"ok": True, "surrogate": _surrogate() is not None,
+            "native_available": HAS_NATIVE, "replay_source": "historical-replay"}
 
 
 # --------------------------------------------------------------------------- #

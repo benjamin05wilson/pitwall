@@ -142,7 +142,7 @@ def enumerate_candidates(
         n_stints = n_stops + 1
         # Order matters for the lap-dependent fuel effect, so permute; dedupe.
         for combo in combinations_with_replacement(compounds_avail, n_stints):
-            for seq in set(permutations(combo)):
+            for seq in sorted(set(permutations(combo)), key=lambda seq: tuple(c.value for c in seq)):
                 if mandatory_start is not None and seq[0] != mandatory_start:
                     continue
                 if len({c for c in seq if c.is_slick}) < 2:

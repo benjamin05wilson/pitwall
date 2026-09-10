@@ -1,0 +1,46 @@
+{
+  "source_commit": "8a06bcfca1efe4bba3a184143a8920187e01d78e",
+  "command": "python scripts/offline_demo.py",
+  "network": "socket connections blocked after imports",
+  "environment": {
+    "python": "3.11.16 (main, Aug 12 2026, 23:03:19) [Clang 17.0.0 (clang-1700.6.4.2)]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "packages": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "pandas": "3.0.5",
+      "fastapi": "0.141.1",
+      "matplotlib": "3.11.1"
+    }
+  },
+  "inputs": {
+    "circuit": "bahrain",
+    "grid": 3,
+    "delta": 0.3,
+    "objective": "podium",
+    "scenarios": 20
+  },
+  "scenario_seed": 7,
+  "rival_seed": 1,
+  "shortlist": 3,
+  "cars": 20,
+  "laps": 57,
+  "health": {
+    "ok": true,
+    "surrogate": false,
+    "native_available": false,
+    "replay_source": "historical-replay"
+  },
+  "heatmap_http_status": 503,
+  "elapsed_seconds": 0.6669,
+  "timing_definition": "One local TestClient health + optimize + heatmap request, excludes imports, plot and browser. Not a benchmark.",
+  "metrics": {
+    "mean_pos": "Mean simulated finishing position, includes DNFs in classification",
+    "p_podium": "Fraction of scenarios classified top three",
+    "cvar10": "Mean of worst ceil(10% * scenarios) positions"
+  },
+  "fixture_sha256": {
+    "offline-request.json": "14f0ce5c2faa5fd6efc78aa0d975d40f6b56321115d563b0d0bf1bdba72c48d7",
+    "synthetic-stint.json": "1331f957f9ae3fd5f925c7152a4a4fb315e423cd3693cfd439aba37fc645a1ce"
+  }
+}

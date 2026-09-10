@@ -1,0 +1,47 @@
+name: Optional validation (explicit opt-in)
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Separate optional suite; no training
+        required: true
+        type: choice
+        options: [torch, native, network]
+jobs:
+  torch:
+    if: inputs.suite == 'torch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[web,dev,ml]"
+      - run: python -m pytest tests/test_surrogate.py -q -ra
+  native:
+    if: inputs.suite == 'native'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: rustup show
+      - run: python -m pip install -e ".[web,dev]" maturin
+      - run: maturin build --release --manifest-path rust/Cargo.toml --out rust/target/wheels
+      - run: python -m pip install rust/target/wheels/*.whl
+      - run: python -c "from pitwall.sim.native import HAS_NATIVE; assert HAS_NATIVE"
+      - run: python -m pytest tests/test_native.py -q -ra
+  network:
+    if: inputs.suite == 'network'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[web,dev,data]"
+      - run: python -m pytest tests/test_data_network.py -q -ra
+        env:
+          PITWALL_NETWORK_TESTS: '1'

@@ -1,0 +1,7 @@
+{
+  "circuit": "bahrain",
+  "grid": 3,
+  "delta": 0.3,
+  "objective": "podium",
+  "scenarios": 20
+}

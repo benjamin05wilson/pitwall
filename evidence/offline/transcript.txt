@@ -1,0 +1,11 @@
+python scripts/offline_demo.py
+source commit: 8a06bcfca1efe4bba3a184143a8920187e01d78e
+network connections blocked
+Python; focal: circuit defaults + explicit driver offset; rivals: generic circuit defaults; seeded pace offsets
+20 scenarios; 3 candidates; 57 laps; scenario seed 7; rival seed 1
+optional heatmap HTTP 503
+H-M (33): mean position 4.45, podium 0.75, CVaR10 20.0
+M-M-H (17/35): mean position 6.2, podium 0.25, CVaR10 20.0
+M-M-S-S (16/32/45): mean position 7.8, podium 0.0, CVaR10 20.0
+request elapsed: 0.6669 seconds (local illustration only)
+synthetic anomaly flags: [12]

@@ -132,9 +132,9 @@ export default function RaceReplay({ preset }: { preset?: { year: number; gp: st
         </select>
         <div className="livetoggle">
           <button className={!live ? 'active' : ''} onClick={() => setLive(false)}>▶ Replay</button>
-          <button className={live ? 'active live' : ''} onClick={() => setLive(true)}>● Live feed</button>
+          <button className={live ? 'active live' : ''} onClick={() => setLive(true)}>● Stream history</button>
         </div>
-        {live && source && <span className="pill"><span className="dot">●</span> {source === 'openf1-live' ? 'LIVE · OpenF1' : 'live-pipeline stream'}</span>}
+        {live && source && <span className="pill"><span className="dot">●</span> {'historical replay'}</span>}
         {loading && <span className="loading"><span className="spinner" /> {live ? 'connecting…' : 'loading race…'}</span>}
       </div>
 
@@ -185,14 +185,14 @@ export default function RaceReplay({ preset }: { preset?: { year: number; gp: st
                 <span className="win">window {cur.rec_pit.lo}–{cur.rec_pit.hi}</span>
                 {inWindow(cur) && <span className="now">● IN WINDOW NOW</span>}
                 <span className="sep" />
-                <span className="muted">live deg <b>{cur.deg?.toFixed(3) ?? '—'}</b> s/lap (90% {cur.deg_lo.toFixed(3)}–{cur.deg_hi.toFixed(3)})</span>
+                <span className="muted">estimated deg <b>{cur.deg?.toFixed(3) ?? '—'}</b> s/lap (90% {cur.deg_lo.toFixed(3)}–{cur.deg_hi.toFixed(3)})</span>
               </>
             ) : <><span className="lbl">ENGINE CALL</span><span className="big">{(cur?.lap ?? 0) > 2 ? 'RUN TO THE FLAG' : 'GATHERING DATA…'}</span></>}
           </div>
 
           <div className="replay-grid">
             <div className="card">
-              <h3>Live tyre degradation <span className="badge">Kalman · updates each lap</span></h3>
+              <h3>Historical tyre estimate <span className="badge">Kalman · updates each lap</span></h3>
               <DegChart replay={replay} lap={lap} />
             </div>
             <div className="card">
@@ -227,8 +227,8 @@ export default function RaceReplay({ preset }: { preset?: { year: number; gp: st
           )}
 
           <div className="muted small" style={{ marginTop: 12 }}>
-            {live ? 'Streaming lap-by-lap through the live engine — the same ingest() a real OpenF1/Williams feed drives.'
-              : `Replaying real ${replay.meta.year} ${replay.meta.gp} data · the engine runs blind to the future — a live feed drops straight in.`}
+            {live ? 'Streaming selected historical observations lap by lap; no current telemetry.'
+              : `Replaying real ${replay.meta.year} ${replay.meta.gp} data · retrospective analysis, not a forward prediction.`}
           </div>
         </>
       )}

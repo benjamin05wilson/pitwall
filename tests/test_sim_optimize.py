@@ -23,7 +23,7 @@ def _field(circuit="bahrain", grid=5, delta=0.3):
     return model, field
 
 
-def test_classification_is_a_permutation():
+def test_focal_position_is_in_field_bounds():
     model, field = _field()
     scen = ScenarioSet.sample(model.safety_car, model.config.n_laps, 50, seed=3)
     ens = evaluate(field, scen)
@@ -72,7 +72,7 @@ def test_deterministic_dp_optimal_pitlap():
             assert t >= best - 1e-6
 
 
-def test_common_random_numbers_reduce_noise():
+def test_same_scenario_bank_is_repeatable():
     """Re-evaluating the same strategy on the same ScenarioSet is deterministic."""
     model, field = _field()
     scen = ScenarioSet.sample(model.safety_car, model.config.n_laps, 80, seed=9)
@@ -94,8 +94,8 @@ def test_grid_position_matters():
     assert back.mean_position - front.mean_position > 2.0
 
 
-def test_red_flag_gives_free_tyres():
-    """Under a red flag, tyre age resets with no pit-loss penalty."""
+def test_red_flag_race_classifies_full_field():
+    """A red-flag race still produces a complete classification."""
     from pitwall.models import RED, RaceControl
     model = RaceModel.for_circuit("bahrain")
     rivals = build_field("bahrain", n_cars=20, seed=1)

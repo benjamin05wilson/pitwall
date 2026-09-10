@@ -1,0 +1,126 @@
+{
+  "source": "synthetic; not F1 telemetry",
+  "formula": "95 + 0.08*age + repeating [0.04,-0.05,0.02,0,-0.01] seconds; +3 seconds on lap 12",
+  "laps": [
+    {
+      "lap": 1,
+      "tyre_age": 0,
+      "corrected_lap_s": 95.04
+    },
+    {
+      "lap": 2,
+      "tyre_age": 1,
+      "corrected_lap_s": 95.03
+    },
+    {
+      "lap": 3,
+      "tyre_age": 2,
+      "corrected_lap_s": 95.18
+    },
+    {
+      "lap": 4,
+      "tyre_age": 3,
+      "corrected_lap_s": 95.24
+    },
+    {
+      "lap": 5,
+      "tyre_age": 4,
+      "corrected_lap_s": 95.31
+    },
+    {
+      "lap": 6,
+      "tyre_age": 5,
+      "corrected_lap_s": 95.44
+    },
+    {
+      "lap": 7,
+      "tyre_age": 6,
+      "corrected_lap_s": 95.43
+    },
+    {
+      "lap": 8,
+      "tyre_age": 7,
+      "corrected_lap_s": 95.58
+    },
+    {
+      "lap": 9,
+      "tyre_age": 8,
+      "corrected_lap_s": 95.64
+    },
+    {
+      "lap": 10,
+      "tyre_age": 9,
+      "corrected_lap_s": 95.71
+    },
+    {
+      "lap": 11,
+      "tyre_age": 10,
+      "corrected_lap_s": 95.84
+    },
+    {
+      "lap": 12,
+      "tyre_age": 11,
+      "corrected_lap_s": 98.83
+    },
+    {
+      "lap": 13,
+      "tyre_age": 12,
+      "corrected_lap_s": 95.98
+    },
+    {
+      "lap": 14,
+      "tyre_age": 13,
+      "corrected_lap_s": 96.04
+    },
+    {
+      "lap": 15,
+      "tyre_age": 14,
+      "corrected_lap_s": 96.11
+    },
+    {
+      "lap": 16,
+      "tyre_age": 15,
+      "corrected_lap_s": 96.24
+    },
+    {
+      "lap": 17,
+      "tyre_age": 16,
+      "corrected_lap_s": 96.23
+    },
+    {
+      "lap": 18,
+      "tyre_age": 17,
+      "corrected_lap_s": 96.38
+    },
+    {
+      "lap": 19,
+      "tyre_age": 18,
+      "corrected_lap_s": 96.44
+    },
+    {
+      "lap": 20,
+      "tyre_age": 19,
+      "corrected_lap_s": 96.51
+    },
+    {
+      "lap": 21,
+      "tyre_age": 20,
+      "corrected_lap_s": 96.64
+    },
+    {
+      "lap": 22,
+      "tyre_age": 21,
+      "corrected_lap_s": 96.63
+    },
+    {
+      "lap": 23,
+      "tyre_age": 22,
+      "corrected_lap_s": 96.78
+    },
+    {
+      "lap": 24,
+      "tyre_age": 23,
+      "corrected_lap_s": 96.84
+    }
+  ]
+}

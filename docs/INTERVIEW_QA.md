@@ -1,3 +1,5 @@
+> Historical design/interview notes. Numerical experimental claims below are unverified unless linked from the current [README evidence ledger](../README.md#evidence-ledger). See the [current limitations register](MODELLING_DECISIONS.md), which supersedes conflicting result and capability claims.
+
 # Pitwall — interview Q&A
 
 Anticipated questions from a Williams strategy/modelling panel, each with a tight, defensible answer grounded in the actual implementation. Generated per area by agents that read the code, then hardened by an adversarial panel that rewrote any hand-wavy answer and added the follow-up the first pass missed.

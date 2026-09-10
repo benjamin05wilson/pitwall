@@ -35,6 +35,26 @@ _COMPOUND_IDX = {c: i for i, c in enumerate(_COMPOUND_ORDER)}
 _REGIME_CODE = {GREEN: 0, SC: 1, VSC: 2, RED: 3}
 
 
+def unsupported_reason(field, scenarios) -> str | None:
+    """Settings omitted by the current Rust ABI must stay on Python."""
+    if any(s.race_control.is_wet_race for s in scenarios.scenarios):
+        return "wet race control"
+    for e in field:
+        if e.retire_lap is not None:
+            return "forced retirement"
+        if any(not c.is_slick for c in e.strategy.compounds):
+            return "non-slick strategy"
+        if e.model.pit.pit_loss_sd != 0:
+            return "pit-loss variance"
+        if e.model.overtake.dirty_air_loss_s != 0:
+            return "dirty-air loss"
+    return None
+
+
+def backend_for(field, scenarios, use_native=True) -> str:
+    return "Rust" if use_native and HAS_NATIVE and unsupported_reason(field, scenarios) is None else "Python"
+
+
 def _compound_index(comp: Compound) -> int:
     """Map a Compound to its slick index, clamping non-slicks to HARD so the
     accelerator never indexes out of range (the dry-strategy engine only ever
@@ -68,6 +88,9 @@ def simulate_batch_native_full(field, scenarios, focal_id: int = 99):
 
 
 def _simulate(field, scenarios, focal_id):
+    reason = unsupported_reason(field, scenarios)
+    if reason:
+        raise ValueError(f"native simulator does not support {reason}")
     n = len(field)
     n_laps = scenarios.n_laps
 

@@ -285,12 +285,9 @@ def openf1_live_session() -> dict | None:
 
 
 def stream_events(year: int, gp: str, driver: str, *, interval: float = 1.0) -> Iterator[dict]:
-    """Yield live engine state lap-by-lap at wall-clock pace. Uses a genuinely
-    live OpenF1 race if one is running; otherwise streams the chosen historical
-    race in real time to demonstrate the live pipeline (``source`` says which)."""
+    """Stream the selected historical race; no current-session ingestion exists."""
     from .models import RaceModel
-    live = openf1_live_session()
-    source = "openf1-live" if live else "replay"
+    source = "historical-replay"
     rd = _historical(year, gp, driver)
     model = RaceModel.for_circuit(rd.meta["circuit_id"], n_laps=rd.meta["n_laps"])
     strat = LiveStrategist(model, rd.meta["prior_pace"])

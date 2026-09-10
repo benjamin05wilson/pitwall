@@ -19,7 +19,7 @@ export interface Ranked extends Ensemble {
 }
 
 export interface OptimizeResult {
-  objective: string; scenarios: number; compute_ms: number;
+  objective: string; scenarios: number; compute_ms: number; backend: string; shortlist: number; seed: number; n_laps: number; focal_model: string; rival_model: string;
   best: Best;
   reason: { runner_up: string; gap: number; pit_loss: number; n_scenarios: number };
   ranked: Ranked[];

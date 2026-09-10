@@ -1,0 +1,97 @@
+{
+  "objective": "podium",
+  "scenarios": 20,
+  "compute_ms": 634,
+  "backend": "Python",
+  "focal_model": "circuit defaults + explicit driver offset",
+  "rival_model": "generic circuit defaults; seeded pace offsets",
+  "seed": 7,
+  "shortlist": 3,
+  "n_laps": 57,
+  "best": {
+    "label": "H-M (33)",
+    "n_stops": 1,
+    "pit_laps": [
+      33
+    ],
+    "compounds": [
+      "HARD",
+      "MEDIUM"
+    ],
+    "mean_pos": 4.45,
+    "median_pos": 2.0,
+    "p_win": 0.0,
+    "p_podium": 0.75,
+    "p_points": 0.9,
+    "cvar10": 20.0,
+    "std_pos": 5.3,
+    "dnf": 0.1
+  },
+  "reason": {
+    "runner_up": "M-M-H (17/35)",
+    "gap": 1.75,
+    "pit_loss": 23.0,
+    "n_scenarios": 20
+  },
+  "ranked": [
+    {
+      "label": "H-M (33)",
+      "stops": 1,
+      "det_time": 5529.7,
+      "mean_pos": 4.45,
+      "median_pos": 2.0,
+      "p_win": 0.0,
+      "p_podium": 0.75,
+      "p_points": 0.9,
+      "cvar10": 20.0,
+      "std_pos": 5.3,
+      "dnf": 0.1
+    },
+    {
+      "label": "M-M-H (17/35)",
+      "stops": 2,
+      "det_time": 5537.7,
+      "mean_pos": 6.2,
+      "median_pos": 5.0,
+      "p_win": 0.0,
+      "p_podium": 0.25,
+      "p_points": 0.85,
+      "cvar10": 20.0,
+      "std_pos": 4.93,
+      "dnf": 0.1
+    },
+    {
+      "label": "M-M-S-S (16/32/45)",
+      "stops": 3,
+      "det_time": 5550.8,
+      "mean_pos": 7.8,
+      "median_pos": 6.5,
+      "p_win": 0.0,
+      "p_podium": 0.0,
+      "p_points": 0.85,
+      "cvar10": 20.0,
+      "std_pos": 4.28,
+      "dnf": 0.1
+    }
+  ],
+  "frontier": [
+    {
+      "label": "H-M (33)",
+      "mean_pos": 4.45,
+      "cvar10": 20.0
+    },
+    {
+      "label": "M-M-H (17/35)",
+      "mean_pos": 6.2,
+      "cvar10": 20.0
+    },
+    {
+      "label": "M-M-S-S (16/32/45)",
+      "mean_pos": 7.8,
+      "cvar10": 20.0
+    }
+  ],
+  "frontier_optimal": [
+    "H-M (33)"
+  ]
+}

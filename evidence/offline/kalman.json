@@ -1,0 +1,218 @@
+[
+  {
+    "lap": 1,
+    "observed": 95.04,
+    "predicted_before_update": 95.0,
+    "anomaly": false,
+    "deg_rate": 0.05,
+    "deg_lo": -0.18292874715242857,
+    "deg_hi": 0.28292874715242855
+  },
+  {
+    "lap": 2,
+    "observed": 95.03,
+    "predicted_before_update": 95.08912001955512,
+    "anomaly": false,
+    "deg_rate": 0.04403218094375359,
+    "deg_lo": -0.17710270972494574,
+    "deg_hi": 0.2651670716124529
+  },
+  {
+    "lap": 3,
+    "observed": 95.18,
+    "predicted_before_update": 95.10075375880754,
+    "anomaly": false,
+    "deg_rate": 0.05625163583047452,
+    "deg_lo": -0.13781832980487835,
+    "deg_hi": 0.2503216014658274
+  },
+  {
+    "lap": 4,
+    "observed": 95.24,
+    "predicted_before_update": 95.19590267968823,
+    "anomaly": false,
+    "deg_rate": 0.06320225483199135,
+    "deg_lo": -0.09766684368700865,
+    "deg_hi": 0.22407135335099135
+  },
+  {
+    "lap": 5,
+    "observed": 95.31,
+    "predicted_before_update": 95.2808177283605,
+    "anomaly": false,
+    "deg_rate": 0.06721773658692673,
+    "deg_lo": -0.06353659439341033,
+    "deg_hi": 0.1979720675672638
+  },
+  {
+    "lap": 6,
+    "observed": 95.44,
+    "predicted_before_update": 95.36212775439456,
+    "anomaly": false,
+    "deg_rate": 0.07606580404703768,
+    "deg_lo": -0.03072787765231577,
+    "deg_hi": 0.18285948574639113
+  },
+  {
+    "lap": 7,
+    "observed": 95.43,
+    "predicted_before_update": 95.47404778659886,
+    "anomaly": false,
+    "deg_rate": 0.07197974569388957,
+    "deg_lo": -0.01656375179427573,
+    "deg_hi": 0.16052324318205485
+  },
+  {
+    "lap": 8,
+    "observed": 95.58,
+    "predicted_before_update": 95.52692738009569,
+    "anomaly": false,
+    "deg_rate": 0.07602674048475333,
+    "deg_lo": 0.001310773215744035,
+    "deg_hi": 0.15074270775376264
+  },
+  {
+    "lap": 9,
+    "observed": 95.64,
+    "predicted_before_update": 95.6246168114348,
+    "anomaly": false,
+    "deg_rate": 0.07700450133306218,
+    "deg_lo": 0.012865806463411608,
+    "deg_hi": 0.14114319620271276
+  },
+  {
+    "lap": 10,
+    "observed": 95.71,
+    "predicted_before_update": 95.70756850934207,
+    "anomaly": false,
+    "deg_rate": 0.0771354470955862,
+    "deg_lo": 0.021204155068407532,
+    "deg_hi": 0.13306673912276487
+  },
+  {
+    "lap": 11,
+    "observed": 95.84,
+    "predicted_before_update": 95.78560305312877,
+    "anomaly": false,
+    "deg_rate": 0.07965982479805171,
+    "deg_lo": 0.030192762541132227,
+    "deg_hi": 0.1291268870549712
+  },
+  {
+    "lap": 12,
+    "observed": 98.83,
+    "predicted_before_update": 95.8847226148594,
+    "anomaly": true,
+    "deg_rate": 0.12103778829984949,
+    "deg_lo": 0.07237338365914958,
+    "deg_hi": 0.1697021929405494
+  },
+  {
+    "lap": 13,
+    "observed": 95.98,
+    "predicted_before_update": 96.36218562290463,
+    "anomaly": false,
+    "deg_rate": 0.1048421132543557,
+    "deg_lo": 0.06280874693808718,
+    "deg_hi": 0.14687547957062425
+  },
+  {
+    "lap": 14,
+    "observed": 96.04,
+    "predicted_before_update": 96.31172129505434,
+    "anomaly": false,
+    "deg_rate": 0.09520725849912531,
+    "deg_lo": 0.05764212708831116,
+    "deg_hi": 0.13277238990993948
+  },
+  {
+    "lap": 15,
+    "observed": 96.11,
+    "predicted_before_update": 96.30467597208711,
+    "anomaly": false,
+    "deg_rate": 0.08913928402468889,
+    "deg_lo": 0.05487205002978797,
+    "deg_hi": 0.12340651801958981
+  },
+  {
+    "lap": 16,
+    "observed": 96.24,
+    "predicted_before_update": 96.32289821754678,
+    "anomaly": false,
+    "deg_rate": 0.0867952382759463,
+    "deg_lo": 0.05510444287527294,
+    "deg_hi": 0.11848603367661967
+  },
+  {
+    "lap": 17,
+    "observed": 96.23,
+    "predicted_before_update": 96.3796790317219,
+    "anomaly": false,
+    "deg_rate": 0.08287405485586619,
+    "deg_lo": 0.053273732294832246,
+    "deg_hi": 0.11247437741690013
+  },
+  {
+    "lap": 18,
+    "observed": 96.38,
+    "predicted_before_update": 96.40784365934063,
+    "anomaly": false,
+    "deg_rate": 0.0821882728395773,
+    "deg_lo": 0.05432956464607035,
+    "deg_hi": 0.11004698103308426
+  },
+  {
+    "lap": 19,
+    "observed": 96.44,
+    "predicted_before_update": 96.47966515886571,
+    "anomaly": false,
+    "deg_rate": 0.08125998694371715,
+    "deg_lo": 0.054880661703102254,
+    "deg_hi": 0.10763931218433205
+  },
+  {
+    "lap": 20,
+    "observed": 96.51,
+    "predicted_before_update": 96.545807109795,
+    "anomaly": false,
+    "deg_rate": 0.08045737290038647,
+    "deg_lo": 0.05535373385663895,
+    "deg_hi": 0.105561011944134
+  },
+  {
+    "lap": 21,
+    "observed": 96.64,
+    "predicted_before_update": 96.61225812237757,
+    "anomaly": false,
+    "deg_rate": 0.08105660331576003,
+    "deg_lo": 0.057066694292605094,
+    "deg_hi": 0.10504651233891497
+  },
+  {
+    "lap": 22,
+    "observed": 96.63,
+    "predicted_before_update": 96.70446370037804,
+    "anomaly": false,
+    "deg_rate": 0.0794991913094623,
+    "deg_lo": 0.056492048822762556,
+    "deg_hi": 0.10250633379616204
+  },
+  {
+    "lap": 23,
+    "observed": 96.78,
+    "predicted_before_update": 96.75320990663228,
+    "anomaly": false,
+    "deg_rate": 0.08004379673161624,
+    "deg_lo": 0.05791212678006405,
+    "deg_hi": 0.10217546668316843
+  },
+  {
+    "lap": 24,
+    "observed": 96.84,
+    "predicted_before_update": 96.84462056882185,
+    "anomaly": false,
+    "deg_rate": 0.07995222410569229,
+    "deg_lo": 0.05860714807746271,
+    "deg_hi": 0.10129730013392188
+  }
+]

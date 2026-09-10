@@ -1,0 +1,16 @@
+{
+  "source_commit": "81b5887705643798a1d662153cd85c1d321886a2",
+  "command": "PITWALL_RECORD=1 PLAYWRIGHT_BROWSERS_PATH=$PWD/.cache/ms-playwright npm test --prefix web -- --grep 'no weights'",
+  "node": "v24.18.1",
+  "playwright": "1.63.0",
+  "browser": "Playwright Chromium build 1243 (Chrome for Testing 153.0.8010.12)",
+  "scenario_seed": 7,
+  "rival_seed": 1,
+  "request_fixture": "fixtures/offline-request.json",
+  "interaction": "podium to robust; four-second display dwell after each result",
+  "network": "browser requests restricted to 127.0.0.1; default API path uses no external data",
+  "assets_sha256": {
+    "strategy.png": "6d4e9d7a6af5f3095ad7db9f85495ef9d29036f1d0f6212674bd109e479f24ac",
+    "walkthrough.webm": "c0c0d85b6b5d9d58f437efdc872773119721dd076c51859cb69e3d7318332e81"
+  }
+}
