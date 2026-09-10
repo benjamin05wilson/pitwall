@@ -4,7 +4,7 @@ import RaceReplay from './RaceReplay'
 import StrategyView from './StrategyView'
 
 export default function App() {
-  const [mode, setMode] = useState<'race' | 'replay' | 'strategy'>('race')
+  const [mode, setMode] = useState<'race' | 'replay' | 'strategy'>('strategy')
   const [preset, setPreset] = useState<{ year: number; gp: string; driver: string } | undefined>()
 
   return (
@@ -16,11 +16,11 @@ export default function App() {
         </div>
         <div className="modes">
           <button className={mode === 'race' ? 'active' : ''} onClick={() => setMode('race')}>🏁 Race</button>
-          <button className={mode === 'replay' ? 'active' : ''} onClick={() => setMode('replay')}>▶ Live Replay</button>
+          <button className={mode === 'replay' ? 'active' : ''} onClick={() => setMode('replay')}>▶ Historical Replay</button>
           <button className={mode === 'strategy' ? 'active' : ''} onClick={() => setMode('strategy')}>⚙ Strategy Lab</button>
         </div>
         <div className="spacer" />
-        <span className="pill"><span className="dot">●</span> calibrated on real F1 data</span>
+        <span className="pill"><span className="dot">●</span> offline modelling demonstrator</span>
       </div>
 
       {mode === 'race' && (
@@ -30,7 +30,7 @@ export default function App() {
       {mode === 'strategy' && <StrategyView />}
 
       <div className="foot">
-        pitwall · physics calibrated on real F1 data · Monte-Carlo robust optimisation ·
+        pitwall · physics offline modelling demonstrator · Monte-Carlo robust optimisation ·
         learned surrogate · live Bayesian tyre updating · Rust-accelerated
       </div>
     </div>

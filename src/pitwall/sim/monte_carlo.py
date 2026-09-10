@@ -134,11 +134,11 @@ def evaluate(
     """Replay ``field`` (focal car already inserted) across every scenario.
 
     With ``use_native=True`` and the Rust extension built, the inner loop runs in
-    Rust (~60x faster, validated to agree with this Python path within MC error);
+    Rust for supported settings;
     otherwise the pure-Python simulator runs (the source of truth)."""
     if use_native:
-        from .native import HAS_NATIVE, simulate_batch_native_full
-        if HAS_NATIVE:
+        from .native import backend_for, simulate_batch_native_full
+        if backend_for(field, scenarios) == "Rust":
             pos, times = simulate_batch_native_full(field, scenarios, focal_id)
             return EnsembleResult(
                 focal_id=focal_id, n_runs=len(scenarios), grid_size=len(field),

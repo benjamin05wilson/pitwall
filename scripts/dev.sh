@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Dev mode: FastAPI on :8000, Vite dev server on :5173 (hot reload, proxies /api).
-set -e
+set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ ! -d web/node_modules ]; then npm install --prefix web; fi
-PYTHONPATH=src python3 -m uvicorn pitwall.server:app --host 127.0.0.1 --port 8000 --reload &
-npm run dev --prefix web
+"${PITWALL_PYTHON:-.venv/bin/python}" -m uvicorn pitwall.server:app --host 127.0.0.1 --port 8000 --reload &
+api_pid=$!
+trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT INT TERM
+npm run dev --prefix web -- --host 127.0.0.1 --strictPort

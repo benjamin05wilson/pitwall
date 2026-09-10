@@ -80,9 +80,10 @@ def score_strategies(
     *,
     circuit_id: str,
     focal_grid: int = 1,
-    focal_delta: float = 0.0,
+    focal_delta: float | None = None,
     focal_top_speed: float = 0.0,
     focal_id: int = 99,
+    focal_model=None,
     det_times: list[float] | None = None,
     use_native: bool = False,
 ) -> list[ScoredCandidate]:
@@ -91,7 +92,7 @@ def score_strategies(
         field = with_focal(
             rivals, strat, circuit_id=circuit_id, focal_grid=focal_grid,
             focal_delta=focal_delta, n_laps=scenarios.n_laps, focal_id=focal_id,
-            focal_top_speed=focal_top_speed,
+            focal_top_speed=focal_top_speed, focal_model=focal_model,
         )
         ens = evaluate(field, scenarios, focal_id=focal_id, use_native=use_native)
         scored.append(ScoredCandidate(strat, det_times[i] if det_times else 0.0, ens))
@@ -105,7 +106,7 @@ def optimize(
     *,
     circuit_id: str,
     focal_grid: int = 1,
-    focal_delta: float = 0.0,
+    focal_delta: float | None = None,
     focal_top_speed: float = 0.0,
     objective: str = "podium",
     risk_aversion: float = 0.5,
@@ -123,6 +124,8 @@ def optimize(
     by time. Otherwise a long circuit's shortlist can be all 2-stops and the
     robust pass never even evaluates a 1-stop (which on a track-position circuit
     may be the right call)."""
+    if focal_delta is not None:
+        model = model.with_driver(focal_delta)
     all_cands: list[Candidate] = enumerate_candidates(
         model, max_stops=max_stops, mandatory_start=mandatory_start, top_k=None
     )
@@ -140,7 +143,7 @@ def optimize(
         rivals, [c.strategy for c in cands], scenarios,
         circuit_id=circuit_id, focal_grid=focal_grid, focal_delta=focal_delta,
         focal_top_speed=focal_top_speed, focal_id=focal_id,
-        det_times=[c.det_time for c in cands], use_native=use_native,
+        det_times=[c.det_time for c in cands], use_native=use_native, focal_model=model,
     )
     scored.sort(key=lambda s: s.loss(objective, risk_aversion))
     return OptimizeResult(objective=objective, ranked=scored, scenarios=len(scenarios))

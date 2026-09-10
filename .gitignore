@@ -19,3 +19,8 @@ venv/
 # node
 node_modules/
 web/dist/
+
+.cache/
+*.tsbuildinfo
+web/test-results/
+web/playwright-report/

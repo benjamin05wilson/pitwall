@@ -73,17 +73,23 @@ def with_focal(
     *,
     circuit_id: str,
     focal_grid: int = 1,
-    focal_delta: float = 0.0,
+    focal_delta: float | None = None,
+    focal_model: RaceModel | None = None,
     n_laps: int | None = None,
     focal_id: int = 99,
     focal_top_speed: float = 0.0,
 ) -> list[CarEntry]:
     """Insert/replace the focal car (default car_id 99) into a field, removing any
-    rival that occupied the focal grid slot so positions stay consistent."""
-    base = RaceModel.for_circuit(circuit_id, n_laps=n_laps)
+    rival that occupied the focal grid slot so positions stay consistent.
+
+    A supplied model is preserved; only an explicit focal_delta replaces its
+    driver offset. Rivals are left unchanged (build_field uses generic defaults)."""
+    base = focal_model if focal_model is not None else RaceModel.for_circuit(circuit_id, n_laps=n_laps)
+    if base.config.circuit_id != circuit_id or (n_laps is not None and base.config.n_laps != n_laps):
+        raise ValueError("focal model circuit/lap count differs from scoring context")
     focal = CarEntry(
         car_id=focal_id,
-        model=base.with_driver(focal_delta),
+        model=base if focal_delta is None else base.with_driver(focal_delta),
         strategy=focal_strategy,
         grid=focal_grid,
         top_speed_delta=focal_top_speed,

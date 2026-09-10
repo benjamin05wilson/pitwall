@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, type Circuit, type OptimizeResult, type Heatmap as HM, type SCResult, type Params } from './api'
 import { pct } from './util'
 import StintBar from './components/StintBar'
@@ -10,27 +10,30 @@ const OBJECTIVES = ['podium', 'win', 'points', 'expected', 'robust']
 
 export default function StrategyView() {
   const [circuits, setCircuits] = useState<Circuit[]>([])
-  const [p, setP] = useState<Params>({ circuit: 'bahrain', grid: 3, delta: 0.3, objective: 'podium', scenarios: 400 })
+  const [p, setP] = useState<Params>({ circuit: 'bahrain', grid: 3, delta: 0.3, objective: 'podium', scenarios: 20 })
   const [opt, setOpt] = useState<OptimizeResult | null>(null)
   const [hm, setHm] = useState<HM | null>(null)
   const [sc, setSc] = useState<SCResult | null>(null)
   const [busy, setBusy] = useState(false)
-  const timer = useRef<number | undefined>(undefined)
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  useEffect(() => { api.circuits().then(setCircuits) }, [])
+  useEffect(() => { api.circuits().then(setCircuits).catch(() => setErrors(e => ({ ...e, circuits: 'Could not load circuits. Reload to retry.' }))) }, [])
   useEffect(() => {
-    window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(async () => {
-      setBusy(true)
-      try {
-        const [o, h, s] = await Promise.all([
-          api.optimize(p),
-          api.heatmap({ circuit: p.circuit, grid: p.grid, delta: p.delta }),
-          api.sc({ circuit: p.circuit, grid: p.grid, delta: p.delta }),
-        ])
-        setOpt(o); setHm(h); setSc(s)
-      } catch (e) { console.error(e) } finally { setBusy(false) }
+    let active = true
+    setOpt(null); setHm(null); setSc(null); setErrors({}); setBusy(true)
+    const report = (key: string, message: string) => {
+      if (active) setErrors(e => ({ ...e, [key]: message }))
+    }
+    const timer = window.setTimeout(() => {
+      api.optimize(p).then(o => { if (active) setOpt(o) })
+        .catch(() => report('opt', 'Recommendation failed. Change an input to retry.'))
+        .finally(() => { if (active) setBusy(false) })
+      api.heatmap(p).then(h => { if (active) setHm(h) })
+        .catch(() => report('hm', 'Optional heatmap unavailable. No usable surrogate checkpoint or request failed; core results remain available.'))
+      api.sc(p).then(s => { if (active) setSc(s) })
+        .catch(() => report('sc', 'Counterfactual request failed. Change an input to retry.'))
     }, 220)
+    return () => { active = false; window.clearTimeout(timer) }
   }, [p])
 
   const circuit = circuits.find((c) => c.id === p.circuit)
@@ -40,12 +43,14 @@ export default function StrategyView() {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0 22px' }}>
-        {opt && <span className="pill">optimised in {opt.compute_ms} ms · {opt.scenarios} races · Rust</span>}
-        <span className="pill"><span className="dot">●</span> {busy ? 'computing…' : 'live'}</span>
+        {opt && <span className="pill">optimised in {opt.compute_ms} ms · {opt.scenarios} races · {opt.backend}</span>}
+        <span className="pill"><span className="dot">●</span> {busy ? 'computing…' : errors.opt ? 'request failed' : 'offline simulation'}</span>
       </div>
       <div className="layout">
         <div className="card" style={{ height: 'fit-content' }}>
-          <h3>Race setup</h3>
+          <h3>Offline Strategy Lab</h3>
+          <p className="muted">Circuit defaults · generic rivals · seed 7 · 20 scenarios · 3 candidates. Illustrative probabilities, not forecasts.</p>
+          {errors.circuits && <p role="alert">{errors.circuits}</p>}
           <div className="field">
             <label>Circuit</label>
             <select value={p.circuit} onChange={(e) => set({ circuit: e.target.value })}>
@@ -105,27 +110,27 @@ export default function StrategyView() {
                 </div>
                 <div className="reason">
                   Optimised for <b>{opt.objective}</b> across <b>{opt.reason.n_scenarios}</b> stochastic races
-                  (safety cars, VSCs, red flags, traffic & reliability) with common random numbers. Beats the next-best{' '}
-                  <b>{opt.reason.runner_up}</b> by <b>{opt.reason.gap.toFixed(2)}</b> positions on expected finish.
+                  (safety cars, VSCs, red flags, traffic & reliability) with common random numbers. Compared with{' '}
+                  <b>{opt.reason.runner_up}</b>: expected-finish difference (runner minus chosen) <b>{opt.reason.gap.toFixed(2)}</b>.
                 </div>
               </>
-            ) : <div className="loading">computing…</div>}
+            ) : <div className="loading" role={errors.opt ? "alert" : "status"}>{errors.opt ?? "computing…"}</div>}
           </div>
 
           <div className="card">
-            <h3>Instant what-if — pit lap × compound
+            <h3>Optional one-stop heatmap — six compound pairs
               {hm && <span className="badge">surrogate · {hm.n} strategies in {hm.compute_ms}ms</span>}</h3>
-            {hm ? <Heatmap hm={hm} /> : <div className="loading">…</div>}
+            {hm ? <Heatmap hm={hm} /> : <div className="loading" role="status">{errors.hm ?? "loading optional heatmap…"}</div>}
           </div>
 
           <div className="card">
             <h3>Risk / reward frontier</h3>
-            {opt ? <Frontier res={opt} /> : <div className="loading">…</div>}
+            {opt ? <Frontier res={opt} /> : <div className="loading">{errors.opt ?? "computing…"}</div>}
           </div>
 
           <div className="card">
             <h3>Safety-car counterfactual</h3>
-            {sc ? <SafetyCar sc={sc} /> : <div className="loading">…</div>}
+            {sc ? <SafetyCar sc={sc} /> : <div className="loading" role="status">{errors.sc ?? "loading…"}</div>}
           </div>
 
           <div className="card">
@@ -148,7 +153,7 @@ export default function StrategyView() {
                   ))}
                 </tbody>
               </table>
-            ) : <div className="loading">…</div>}
+            ) : <div className="loading">{errors.opt ?? "computing…"}</div>}
           </div>
         </div>
       </div>

@@ -1,0 +1,46 @@
+name: Offline readiness
+on:
+  pull_request:
+  push:
+    branches: [main, cv-readiness-20260910]
+  workflow_dispatch:
+jobs:
+  python:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -c requirements-offline.txt -e ".[web,dev]"
+      - run: python -m pytest -q -ra
+      - run: python -m build --wheel
+      - run: python scripts/check_wheel.py
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: python -m pip install -c requirements-offline.txt -e ".[web,dev]"
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - run: npx --prefix web playwright install --with-deps chromium
+      - run: npm test --prefix web
+        env:
+          PITWALL_PYTHON: python
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-evidence
+          path: web/test-results

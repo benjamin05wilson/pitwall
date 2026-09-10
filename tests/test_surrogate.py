@@ -1,5 +1,8 @@
 """Surrogate feature-encoding and network tests (no training needed)."""
 
+import pytest
+pytest.importorskip("torch", reason="optional ML suite requires torch")
+
 import numpy as np
 
 from pitwall.models import RaceModel

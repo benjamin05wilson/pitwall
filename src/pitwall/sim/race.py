@@ -1,8 +1,8 @@
 """Single-race, lap-discretized, multi-car simulator.
 
 This is the **pure-Python reference implementation** — readable and the source of
-truth that the Rust hot loop (``pitwall._native``) is validated bit-for-bit
-against. Each lap, for every running car, we:
+truth used to compare the optional Rust hot loop. RNG streams differ across
+languages; bit-for-bit parity is not claimed. Each lap, for every running car, we:
 
   1. compute a green lap time from the calibrated model (+ Gaussian noise),
   2. apply the neutralisation regime (SC/VSC slow-down + fractional tyre/fuel use),
