@@ -1,5 +1,5 @@
 """Assemble INTERVIEW_QA.md and MODELLING_DECISIONS.md from the adversarially
-stress-tested interview-prep workflow output. Re-runnable."""
+interview-prep workflow output. Requires external workflow JSON; not an experiment runner."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 DOCS.mkdir(exist_ok=True)
 
+if SRC is None:
+    raise SystemExit("Usage: python scripts/gen_interview_docs.py WORKFLOW.json (external result.dimensions input; overwrites docs)")
 data = json.load(open(SRC))
 dims = data.get("result", data)["dimensions"]
 

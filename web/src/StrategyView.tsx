@@ -37,7 +37,7 @@ export default function StrategyView() {
   }, [p])
 
   const circuit = circuits.find((c) => c.id === p.circuit)
-  const nLaps = circuit?.n_laps ?? 57
+  const nLaps = opt?.n_laps ?? circuit?.n_laps ?? 57
   const set = (patch: Partial<Params>) => setP((prev) => ({ ...prev, ...patch }))
 
   return (
@@ -49,7 +49,7 @@ export default function StrategyView() {
       <div className="layout">
         <div className="card" style={{ height: 'fit-content' }}>
           <h3>Offline Strategy Lab</h3>
-          <p className="muted">Circuit defaults · generic rivals · seed 7 · 20 scenarios · 3 candidates. Illustrative probabilities, not forecasts.</p>
+          <p className="muted">{opt ? `${opt.focal_model} · ${opt.rival_model} · seed ${opt.seed} · ${opt.scenarios} scenarios · ${opt.shortlist} candidates.` : `Circuit defaults · generic rivals · requested ${p.scenarios} scenarios.`} Illustrative probabilities, not forecasts.</p>
           {errors.circuits && <p role="alert">{errors.circuits}</p>}
           <div className="field">
             <label>Circuit</label>

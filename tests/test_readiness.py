@@ -127,3 +127,33 @@ def test_no_weights_api_returns_core_recommendation(monkeypatch):
         assert 'defaults' in result['focal_model']
         assert client.post('/api/optimize', json={'scenarios': 0}).status_code == 422
         assert client.post('/api/optimize', json={'objective': 'bogus'}).status_code == 422
+
+@pytest.mark.parametrize('setting', ['wet', 'compound', 'retirement', 'dirty_air', 'pit_variance'])
+def test_each_unsupported_native_setting_selects_python(monkeypatch, setting):
+    from pitwall.sim import native
+    m = RaceModel.for_circuit('bahrain', n_laps=8)
+    strategy = Strategy([Stint(Compound.SOFT, 4), Stint(Compound.HARD, 4)])
+    bank = ScenarioSet([Scenario(RaceControl(8), 17)], 8)
+    if setting == 'wet':
+        bank.scenarios[0].race_control.wetness[3] = .4
+    if setting == 'compound':
+        strategy = Strategy([Stint(Compound.INTERMEDIATE, 8)])
+    if setting == 'dirty_air':
+        m = replace(m, overtake=replace(m.overtake, dirty_air_loss_s=.2))
+    if setting == 'pit_variance':
+        m = replace(m, pit=replace(m.pit, pit_loss_sd=.4))
+    field = [CarEntry(99, m, strategy, retire_lap=3 if setting == 'retirement' else None)]
+    monkeypatch.setattr(native, 'HAS_NATIVE', True)
+    assert native.unsupported_reason(field, bank)
+    assert native.backend_for(field, bank) == 'Python'
+
+
+def test_backend_label_respects_availability_and_request(monkeypatch):
+    from pitwall.sim import native
+    field = build_field('bahrain', n_laps=8, n_cars=3)
+    bank = ScenarioSet([Scenario(RaceControl(8), 17)], 8)
+    monkeypatch.setattr(native, 'HAS_NATIVE', True)
+    assert native.backend_for(field, bank) == 'Rust'
+    assert native.backend_for(field, bank, use_native=False) == 'Python'
+    monkeypatch.setattr(native, 'HAS_NATIVE', False)
+    assert native.backend_for(field, bank) == 'Python'

@@ -1,3 +1,5 @@
+> Historical design/interview notes. Numerical experimental claims below are unverified unless linked from the current [README evidence ledger](../README.md#evidence-ledger). See the [current limitations register](MODELLING_DECISIONS.md), which supersedes conflicting result and capability claims.
+
 # pitwall — modelling build-bible
 
 Every functional form, default value, source and confidence level behind the

@@ -192,7 +192,7 @@ def optimize(req: OptimizeReq) -> dict:
         "objective": req.objective, "scenarios": len(scen), "compute_ms": round(ms),
         "backend": backend, "focal_model": "circuit defaults + explicit driver offset",
         "rival_model": "generic circuit defaults; seeded pace offsets",
-        "seed": 7, "shortlist": 3, "n_laps": model.config.n_laps,
+        "seed": 7, "shortlist": len(res.ranked), "n_laps": model.config.n_laps,
         "best": {"label": best.strategy.label(), "n_stops": best.strategy.n_stops,
                  "pit_laps": list(best.strategy.pit_laps),
                  "compounds": [c.value for c in best.strategy.compounds],

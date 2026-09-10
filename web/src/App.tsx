@@ -30,8 +30,7 @@ export default function App() {
       {mode === 'strategy' && <StrategyView />}
 
       <div className="foot">
-        pitwall · physics offline modelling demonstrator · Monte-Carlo robust optimisation ·
-        learned surrogate · live Bayesian tyre updating · Rust-accelerated
+        pitwall · Monte-Carlo shortlist optimisation · optional surrogate · historical Bayesian replay
       </div>
     </div>
   )
